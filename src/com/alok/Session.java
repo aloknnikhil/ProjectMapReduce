@@ -1,3 +1,8 @@
+package com.alok;
+
+import com.alok.mapr.JobTracker;
+import com.alok.utils.Node;
+
 import java.io.File;
 
 /**
@@ -43,7 +48,7 @@ public class Session {
 
         }
 
-        TaskManager.assignTaskTo(TaskManager.getTaskFor(slaveNodeID), slaveNodeID);
+        JobTracker.assignTaskTo(JobTracker.getTaskFor(slaveNodeID), slaveNodeID);
 
     }
 

@@ -1,17 +1,21 @@
+package com.alok.utils;
+
+import com.alok.Session;
+import com.alok.storage.*;
+
 import java.io.*;
-import java.net.Socket;
 
 /**
  * Created by alok on 4/11/15
  */
 public class Node implements Serializable {
 
-    enum NodeType {
+    public enum NodeType {
         MASTER,
         SLAVE
     }
 
-    enum Status {
+    public enum Status {
         STARTUP,
         IDLE,
         BUSY,
@@ -28,7 +32,7 @@ public class Node implements Serializable {
 
     public void startNode() {
 
-        //If the Node is a master node, then we need additional setup procedures
+        //If the com.alok.utils.Node is a master node, then we need additional setup procedures
         if (type == NodeType.MASTER) {
             Session.startJobTracker();
             FileSystem.setFileSystemManager(this);

@@ -1,3 +1,7 @@
+package com.alok.storage;
+
+import com.alok.utils.Node;
+
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
  */

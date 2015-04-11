@@ -1,3 +1,8 @@
+package com.alok;
+
+import com.alok.utils.LogFile;
+import com.alok.utils.Node;
+import com.alok.utils.Task;
 import org.apache.zookeeper.*;
 
 import java.io.IOException;
@@ -12,7 +17,7 @@ public class ResourceManager {
     private static final int SESSION_TIMEOUT = 10000;
     private static ResourceManager resourceManagerInstance;
 
-    public final static String APPLICATION_ROOT_PATH = "/mapr";
+    public final static String APPLICATION_ROOT_PATH = "/com/alok/mapr";
     public final static String SLAVES_ROOT_PATH = "/slaves";
     public final static String MASTERS_ROOT_PATH = "/masters";
     public final static String IDLE_SLAVES_PATH = "/idle";

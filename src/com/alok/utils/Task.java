@@ -1,3 +1,5 @@
+package com.alok.utils;
+
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
  */
