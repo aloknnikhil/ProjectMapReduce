@@ -11,19 +11,40 @@ public class Node {
     }
 
     private NodeType type;
+    private int nodeID;
     private Socket accessSocket;
 
     public Node(NodeType type, Socket accessSocket) {
         this.type = type;
         this.accessSocket = accessSocket;
+        nodeID = Utils.getNodeID(accessSocket.getInetAddress().getCanonicalHostName());
     }
 
     public void startNode() {
+
+        //If the Node is a master node, then we need additional setup procedures
         if(type == NodeType.MASTER) {
             startJobTracker();
-            startTaskTracker();
             FileSystem.setFileSystemManager(this);
-            startDataNode();
+            FileSystem.startNameNodeService();
         }
+
+        startTaskTracker();
+        startDataNode();
+    }
+
+    //TODO Replace with zookeeper implementation
+    private void startJobTracker()  {
+        for(String slave : Session.getSlavesList()) {
+
+        }
+    }
+
+    private void startTaskTracker() {
+
+    }
+
+    private void startDataNode()    {
+
     }
 }
