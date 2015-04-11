@@ -1,7 +1,7 @@
-package com.alok.utils;
+package com.project.utils;
 
-import com.alok.Session;
-import com.alok.storage.*;
+import com.project.MapRSession;
+import com.project.storage.*;
 
 import java.io.*;
 
@@ -23,24 +23,24 @@ public class Node implements Serializable {
     }
 
     private NodeType type;
-    private String nodeID;
+    private int nodeID;
 
-    public Node(NodeType type, String nodeID) {
+    public Node(NodeType type, int nodeID) {
         this.type = type;
         this.nodeID = nodeID;
     }
 
     public void startNode() {
 
+        MapRSession.startTaskTracker();
+        MapRSession.startDataNode();
+
         //If the com.alok.utils.Node is a master node, then we need additional setup procedures
         if (type == NodeType.MASTER) {
-            Session.startJobTracker();
+            MapRSession.startJobTracker();
             FileSystem.setFileSystemManager(this);
             FileSystem.startNameNodeService();
         }
-
-        Session.startTaskTracker();
-        Session.startDataNode();
     }
 
     public static byte[] serialize(Node node) {
@@ -65,5 +65,9 @@ public class Node implements Serializable {
             e.printStackTrace();
             return null;
         }
+    }
+
+    public int getNodeID() {
+        return nodeID;
     }
 }

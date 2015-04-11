@@ -1,6 +1,8 @@
-package com.alok.storage;
+package com.project.storage;
 
-import com.alok.utils.Node;
+import com.project.utils.Node;
+
+import java.io.File;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
@@ -30,5 +32,10 @@ public class FileSystem {
         }
 
         return fileSystemInstance;
+    }
+
+    public static String copyFrom(File localFile)  {
+        //TODO Return path in Cassandra
+        return localFile.getAbsolutePath();
     }
 }

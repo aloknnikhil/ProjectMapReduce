@@ -1,8 +1,9 @@
-package com.alok;
+package com.project;
 
-import com.alok.utils.LogFile;
-import com.alok.utils.Node;
-import com.alok.utils.Task;
+import com.project.mapr.JobTracker;
+import com.project.utils.LogFile;
+import com.project.utils.Node;
+import com.project.utils.Task;
 import org.apache.zookeeper.*;
 
 import java.io.IOException;
@@ -16,10 +17,13 @@ public class ResourceManager {
     private static ZooKeeper zooKeeper;
     private static final int SESSION_TIMEOUT = 10000;
     private static ResourceManager resourceManagerInstance;
+    public static JobTracker jobTracker;
 
-    public final static String APPLICATION_ROOT_PATH = "/com/alok/mapr";
+    public final static String APPLICATION_ROOT_PATH = "/com/project/mapr";
     public final static String SLAVES_ROOT_PATH = "/slaves";
     public final static String MASTERS_ROOT_PATH = "/masters";
+    public final static String TASKS_ROOT_PATH = "/tasks";
+
     public final static String IDLE_SLAVES_PATH = "/idle";
     public final static String BUSY_SLAVES_PATH = "/busy";
     public final static String ALL_SLAVES_PATH = "/all";
@@ -66,7 +70,11 @@ public class ResourceManager {
 
                 if (zooKeeper.exists(APPLICATION_ROOT_PATH + MASTERS_ROOT_PATH, false) == null)
                     zooKeeper.create(APPLICATION_ROOT_PATH + MASTERS_ROOT_PATH,
-                            "MastersRootPath".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+                            "MastersRoot".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+
+                if (zooKeeper.exists(APPLICATION_ROOT_PATH + TASKS_ROOT_PATH, false) == null)
+                    zooKeeper.create(APPLICATION_ROOT_PATH + TASKS_ROOT_PATH,
+                            "TasksRoot".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
 
             } else {
                 zooKeeper.create(APPLICATION_ROOT_PATH, "MapReduceRoot".getBytes(),
@@ -123,7 +131,7 @@ public class ResourceManager {
         }
     }
 
-    public static void changeSlaveState(String node, Node.Status status) {
+    public static void changeNodeState(String node, Node.Status status) {
         try {
             switch (status) {
                 case STARTUP:
@@ -163,7 +171,8 @@ public class ResourceManager {
         }
     }
 
-    public static void dispatchTask(Task task, String nodeID)  {
+    public static void dispatchTask(Task task)  {
+
     }
 
     public static ResourceManager getResourceManagerInstance() {

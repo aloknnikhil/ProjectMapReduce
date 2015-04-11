@@ -1,6 +1,6 @@
-package com.alok.utils;
+package com.project.utils;
 
-import com.alok.Session;
+import com.project.MapRSession;
 
 import java.io.*;
 
@@ -17,7 +17,7 @@ public class LogFile extends File {
 
     private static LogFile getLogFileInstance() {
         if(logFileInstance == null)
-            logFileInstance = new LogFile(Session.getRootDir(), "logfile");
+            logFileInstance = new LogFile(MapRSession.getRootDir(), "logfile");
 
         try {
             logFileInstance.createNewFile();
@@ -31,9 +31,9 @@ public class LogFile extends File {
     public static void writeToLog(String message)   {
         PrintWriter printWriter;
         try {
-            printWriter = new PrintWriter(new FileWriter(getLogFileInstance(), Session.flag));
-            if(!Session.flag)
-                Session.flag = true;
+            printWriter = new PrintWriter(new FileWriter(getLogFileInstance(), MapRSession.flag));
+            if(!MapRSession.flag)
+                MapRSession.flag = true;
 
             printWriter.println(message);
             printWriter.flush();

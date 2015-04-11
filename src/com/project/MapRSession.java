@@ -1,41 +1,46 @@
-package com.alok;
+package com.project;
 
-import com.alok.mapr.JobTracker;
-import com.alok.utils.Node;
+import com.project.mapr.JobTracker;
+import com.project.utils.Input;
+import com.project.utils.Node;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Created by Alok on 4/11/15 in ProjectMapReduce
  */
-public class Session {
+public class MapRSession {
 
-    private static Session sessionInstance;
+    private static MapRSession mapRSessionInstance;
     private File sessionDir;
+    private Input input;
     public static boolean flag = false;
 
-    private Session()   {
+    public MapRSession()   {
         configureSession();
     }
 
     private void configureSession() {
         sessionDir = new File("session" + System.currentTimeMillis());
         sessionDir.mkdir();
+        input = new Input(new File("input"));
     }
 
     public static File getRootDir() {
-        return sessionInstance.sessionDir;
+        return mapRSessionInstance.sessionDir;
     }
 
-    private static Session getSessionInstance() {
-        if(sessionInstance == null)
-            sessionInstance = new Session();
+    private static MapRSession getMapRSessionInstance() {
+        if(mapRSessionInstance == null)
+            mapRSessionInstance = new MapRSession();
 
-        return sessionInstance;
+        return mapRSessionInstance;
     }
 
     public static void startJobTracker()  {
-        Node slaveNodeID = null;
+        List<Node> slaveNodes = new ArrayList<>();
         while(ResourceManager.getIdleSlavePaths().size() != ResourceManager.getAllSlavePaths().size())  {
             try {
                 Thread.sleep(500);
@@ -45,11 +50,10 @@ public class Session {
         }
 
         for (String slavePath : ResourceManager.getIdleSlavePaths())    {
-
+            slaveNodes.add(ResourceManager.getNodeFrom(slavePath));
         }
-
-        JobTracker.assignTaskTo(JobTracker.getTaskFor(slaveNodeID), slaveNodeID);
-
+        ResourceManager.jobTracker = new JobTracker(mapRSessionInstance.input, slaveNodes);
+        ResourceManager.jobTracker.startScheduler();
     }
 
     public static void startTaskTracker() {
