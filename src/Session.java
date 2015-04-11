@@ -1,10 +1,4 @@
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
 
 /**
  * Created by Alok on 4/11/15 in ProjectMapReduce
@@ -13,9 +7,6 @@ public class Session {
 
     private static Session sessionInstance;
     private File sessionDir;
-    //TODO Replace local config access with zookeeper implementation
-    private static File configDir;
-    private List<String> slavesList;
     public static boolean flag = false;
 
     private Session()   {
@@ -25,12 +16,6 @@ public class Session {
     private void configureSession() {
         sessionDir = new File("session" + System.currentTimeMillis());
         sessionDir.mkdir();
-        configDir = new File("config");
-        if(!configDir.exists() || !configDir.isDirectory()) {
-            LogFile.writeToLog("Could not find configuration files. Exiting setup");
-            exit(-1);
-        }
-
     }
 
     public static File getRootDir() {
@@ -44,28 +29,30 @@ public class Session {
         return sessionInstance;
     }
 
-    public static List<String> getSlavesList() {
-        if(getSessionInstance().slavesList == null) {
-            String line;
-            File slavesFile = new File(configDir, "slaves");
-            getSessionInstance().slavesList = new ArrayList<>();
-            if (!slavesFile.exists()) {
-                LogFile.writeToLog("No slaves file! Exiting setup");
-                exit(-1);
-            }
-
+    public static void startJobTracker()  {
+        Node slaveNodeID = null;
+        while(ResourceManager.getIdleSlavePaths().size() != ResourceManager.getAllSlavePaths().size())  {
             try {
-                BufferedReader slaveReader = new BufferedReader(new FileReader(slavesFile));
-                while ((line = slaveReader.readLine()) != null) {
-                    getSessionInstance().slavesList.add(line);
-                }
-            } catch (java.io.IOException e) {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
                 e.printStackTrace();
             }
+        }
+
+        for (String slavePath : ResourceManager.getIdleSlavePaths())    {
 
         }
 
-        return getSessionInstance().slavesList;
+        TaskManager.assignTaskTo(TaskManager.getTaskFor(slaveNodeID), slaveNodeID);
+
+    }
+
+    public static void startTaskTracker() {
+
+    }
+
+    public static void startDataNode()    {
+
     }
 
     public static void exit(int status) {

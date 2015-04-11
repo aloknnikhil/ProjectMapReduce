@@ -5,7 +5,7 @@ import java.util.StringTokenizer;
  */
 public class Utils {
 
-    public static int getNodeID(String nodeAddress)    {
-        return new StringTokenizer(nodeAddress, ":").nextToken().hashCode();
+    public static String getNodeID(String nodeAddress)    {
+        return new StringTokenizer(nodeAddress, ":").nextToken().hashCode() + "";
     }
 }
