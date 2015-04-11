@@ -1,9 +1,11 @@
 package com.project.utils;
 
+import java.io.*;
+
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
  */
-public class Task {
+public class Task implements Serializable {
 
     public enum Type   {
         MAP,
@@ -70,5 +72,37 @@ public class Task {
 
     public void setStatus(Status status) {
         this.status = status;
+    }
+
+    public static byte[] serialize(Task task) {
+        ByteArrayOutputStream b = new ByteArrayOutputStream();
+        ObjectOutputStream o;
+        try {
+            o = new ObjectOutputStream(b);
+            o.writeObject(task);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return b.toByteArray();
+    }
+
+    public static Task deserialize(byte[] bytes) {
+        ByteArrayInputStream b = new ByteArrayInputStream(bytes);
+        ObjectInputStream o;
+        try {
+            o = new ObjectInputStream(b);
+            return (Task) o.readObject();
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    @Override
+    public boolean equals(Object task) {
+        if(task instanceof Task)
+            return ((Task) task).getTaskID() == this.getTaskID();
+        else
+            return false;
     }
 }

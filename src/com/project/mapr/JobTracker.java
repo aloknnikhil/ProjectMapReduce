@@ -4,11 +4,12 @@ import com.project.ResourceManager;
 import com.project.storage.FileSystem;
 import com.project.utils.Input;
 import com.project.utils.Node;
+import com.project.utils.Output;
 import com.project.utils.Task;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 
-import java.io.File;
+import java.io.*;
 import java.util.*;
 
 /**
@@ -22,7 +23,10 @@ public class JobTracker {
     private HashMap<Integer, Queue<Task>> allTasks;
     private List<Node> slaveNodes;
     private Input jobInput;
-    public static Watcher taskWatcher;
+    private Output jobOutput;
+    public Watcher taskWatcher;
+
+    private File intermediateDir = new File("intermediate");
 
     public JobTracker(Input inputFile, List<Node> slaveNodes) {
         runningTasks = new HashMap<>();
@@ -31,50 +35,80 @@ public class JobTracker {
         pendingTasks = new ArrayList<>();
         taskWatcher = new TaskWatcher();
         jobInput = inputFile;
+        jobOutput = new Output(new File("results.txt"));
+        if (!intermediateDir.exists())
+            intermediateDir.mkdir();
         this.slaveNodes = slaveNodes;
     }
 
-    public void startScheduler()    {
+    public void startScheduler() {
         initializeMapTasks();
         assignTasks();
         beginTasks();
     }
 
-    private void initializeMapTasks()   {
+    private void initializeMapTasks() {
         Task task;
         Input taskInput;
         int count = 1;
-        for(File file : jobInput.getLocalFile().listFiles())   {
+        pendingTasks.clear();
+
+        for (File file : jobInput.getLocalFile().listFiles()) {
             task = new Task();
             task.setType(Task.Type.MAP);
             task.setStatus(Task.Status.INITIALIZED);
             task.setTaskID(count);
-            taskInput = new Input(FileSystem.copyFrom(file));
+            taskInput = new Input(FileSystem.copyFromLocalFile(file));
             task.setTaskInput(taskInput);
             pendingTasks.add(task);
             count++;
         }
     }
 
-    private void assignTasks()  {
+    private void initializeReduceTasks() {
+        Task task;
+        Input taskInput;
+        int count = 1;
+        for (File file : intermediateDir.listFiles()) {
+            task = new Task();
+            task.setType(Task.Type.REDUCE);
+            task.setStatus(Task.Status.INITIALIZED);
+            task.setTaskID(count);
+            taskInput = new Input(FileSystem.copyFromLocalFile(file));
+            task.setTaskInput(taskInput);
+            pendingTasks.add(task);
+            count++;
+        }
+    }
+
+    private void assignTasks() {
         Iterator nodeIterator = slaveNodes.iterator();
         Node temp;
-        for(Task task : pendingTasks)   {
-            if(!nodeIterator.hasNext())
+        for (Task task : pendingTasks) {
+            pendingTasks.remove(task);
+            if (!nodeIterator.hasNext())
                 nodeIterator = slaveNodes.iterator();
 
             temp = (Node) nodeIterator.next();
 
-            if(allTasks.containsKey(temp.getNodeID()))  {
+            if (allTasks.containsKey(temp.getNodeID())) {
                 task.setExecutorID(temp.getNodeID());
                 allTasks.get(temp.getNodeID()).add(task);
             }
         }
     }
 
-    private void beginTasks()   {
-        for(Map.Entry<Integer, Queue<Task>> entry : allTasks.entrySet())    {
+    private void beginTasks() {
+        for (Map.Entry<Integer, Queue<Task>> entry : allTasks.entrySet()) {
             ResourceManager.dispatchTask(entry.getValue().peek());
+        }
+    }
+
+    private void markTaskComplete(Task task) {
+        if (completedTasks.containsKey(task.getExecutorID())) {
+            completedTasks.get(task.getExecutorID()).add(task);
+            runningTasks.get(task.getExecutorID()).remove();
+            runningTasks.put(task.getExecutorID(), runningTasks.get(task.getExecutorID()));
         }
     }
 
@@ -103,6 +137,59 @@ public class JobTracker {
         @Override
         public void process(WatchedEvent event) {
 
+            switch (event.getType()) {
+                case NodeDataChanged:
+                    Task task = ResourceManager.getRunningTask(event.getPath());
+
+                    switch (task.getStatus()) {
+                        case RUNNING:
+                            //TODO Check if the task running time exceeded the timeout period
+                            //If so, re-schedule on another node
+                            break;
+
+                        case COMPLETE:
+                            collectTaskOutput(task);
+                            markTaskComplete(task);
+                    }
+
+                    break;
+            }
+
+        }
+    }
+
+    private void collectTaskOutput(Task task) {
+        File localFile;
+        localFile = FileSystem.copyFromRemotePath(task.getTaskOutput().getRemoteDataPath());
+        parseKeyValuePair(localFile, task.getType());
+    }
+
+    private void parseKeyValuePair(File intermediateFile, Task.Type type) {
+        BufferedReader bufferedReader;
+        StringTokenizer stringTokenizer;
+        String temp, key, value;
+        PrintWriter printWriter;
+
+        try {
+            bufferedReader = new BufferedReader(new FileReader(intermediateFile));
+            while ((temp = bufferedReader.readLine()) != null) {
+                stringTokenizer = new StringTokenizer(temp, ":");
+                key = stringTokenizer.nextToken();
+                value = stringTokenizer.nextToken();
+                if (type == Task.Type.MAP) {
+                    printWriter = new PrintWriter(new FileWriter(new File(intermediateDir, key), true));
+                    printWriter.println(value);
+                } else {
+                    printWriter = new PrintWriter(new FileWriter(jobOutput.getLocalFile(), true));
+                    printWriter.println(key + " " + value);
+                }
+
+                printWriter.flush();
+                printWriter.close();
+            }
+            bufferedReader.close();
+        } catch (java.io.IOException e) {
+            e.printStackTrace();
         }
     }
 }

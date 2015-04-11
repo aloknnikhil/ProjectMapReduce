@@ -34,8 +34,13 @@ public class FileSystem {
         return fileSystemInstance;
     }
 
-    public static String copyFrom(File localFile)  {
+    public static String copyFromLocalFile(File localFile)  {
         //TODO Return path in Cassandra
         return localFile.getAbsolutePath();
+    }
+
+    public static File copyFromRemotePath(String remoteDataPath)  {
+        //TODO Return file from data in Cassandra
+        return new File("output");
     }
 }
