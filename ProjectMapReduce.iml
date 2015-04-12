@@ -9,5 +9,6 @@
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="library" name="org.apache.zookeeper:zookeeper:3.4.6" level="project" />
     <orderEntry type="library" name="com.netflix.astyanax:astyanax:2.0.2" level="project" />
+    <orderEntry type="library" name="org.apache.directory.studio:org.apache.commons.io:2.4" level="project" />
   </component>
 </module>

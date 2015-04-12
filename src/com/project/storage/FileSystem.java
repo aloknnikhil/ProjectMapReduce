@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableMap;
 import com.netflix.astyanax.AstyanaxContext;
 import com.netflix.astyanax.Keyspace;
 import com.netflix.astyanax.connectionpool.NodeDiscoveryType;
+import com.netflix.astyanax.connectionpool.exceptions.BadRequestException;
 import com.netflix.astyanax.connectionpool.exceptions.ConnectionException;
 import com.netflix.astyanax.connectionpool.impl.ConnectionPoolConfigurationImpl;
 import com.netflix.astyanax.connectionpool.impl.CountingConnectionPoolMonitor;
@@ -16,6 +17,8 @@ import com.netflix.astyanax.serializers.StringSerializer;
 import com.netflix.astyanax.thrift.ThriftFamilyFactory;
 import com.project.utils.LogFile;
 import com.project.utils.Node;
+import org.apache.cassandra.thrift.InvalidRequestException;
+import org.apache.commons.io.IOUtils;
 
 import java.io.*;
 
@@ -66,11 +69,9 @@ public class FileSystem {
     }
 
     public static String copyFromLocalFile(File localFile) {
-        String temp;
-        ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(serialize(localFile));
         try {
             ChunkedStorage.newWriter(getInstance().chunkedStorageProvider,
-                    localFile.getAbsolutePath(), byteArrayInputStream)
+                    localFile.getAbsolutePath(), new FileInputStream(localFile))
                     .withChunkSize(100)
                     .call();
         } catch (Exception e) {
@@ -80,19 +81,17 @@ public class FileSystem {
     }
 
     public static File copyFromRemotePath(String remoteDataPath) {
+        File remoteFile = new File(remoteDataPath + "remote");
+        String temp;
         try {
             ObjectMetadata metadata = ChunkedStorage.newInfoReader(getInstance().
                     chunkedStorageProvider, remoteDataPath).call();
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream(metadata.getObjectSize().intValue());
+            FileOutputStream outputStream = new FileOutputStream(remoteFile);
             ChunkedStorage.newReader(getInstance().chunkedStorageProvider, remoteDataPath, outputStream)
                     .withBatchSize(11)
                     .withConcurrencyLevel(3)
                     .call();
-
-            File remoteFile = deserialize(outputStream.toByteArray());
-            LogFile.writeToLog("Remote File data: " + remoteFile.getAbsolutePath());
             return remoteFile;
-
         } catch (Exception e) {
             e.printStackTrace();
             return null;
@@ -120,7 +119,7 @@ public class FileSystem {
 
         // Using simple strategy
         try {
-            keyspace.createKeyspace(ImmutableMap.<String, Object>builder()
+            keyspace.createKeyspaceIfNotExists(ImmutableMap.<String, Object>builder()
                             .put("strategy_options", ImmutableMap.<String, Object>builder()
                                     .put("replication_factor", "1")
                                     .build())
@@ -130,39 +129,17 @@ public class FileSystem {
 
             keyspace.createColumnFamily(CF_CHUNK, null);
 
+        } catch (BadRequestException e) {
+
         } catch (ConnectionException e) {
             e.printStackTrace();
         }
 
         chunkedStorageProvider = new CassandraChunkedStorageProvider(keyspace, CF_CHUNK);
-        copyFromRemotePath(copyFromLocalFile(new File("logfile")));
+        copyFromRemotePath(copyFromLocalFile(new File("testFile")));
     }
 
     private void disconnectFromBackStore() {
         context.shutdown();
-    }
-
-    public static byte[] serialize(File file) {
-        ByteArrayOutputStream b = new ByteArrayOutputStream();
-        ObjectOutputStream o;
-        try {
-            o = new ObjectOutputStream(b);
-            o.writeObject(file);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return b.toByteArray();
-    }
-
-    public static File deserialize(byte[] bytes) {
-        ByteArrayInputStream b = new ByteArrayInputStream(bytes);
-        ObjectInputStream o = null;
-        try {
-            o = new ObjectInputStream(b);
-            return (File) o.readObject();
-        } catch (IOException | ClassNotFoundException e) {
-            e.printStackTrace();
-            return null;
-        }
     }
 }
