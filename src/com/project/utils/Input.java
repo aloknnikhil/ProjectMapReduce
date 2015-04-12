@@ -52,4 +52,8 @@ public class Input {
     public Type getType() {
         return type;
     }
+
+    public String getRemoteDataPath() {
+        return remoteDataPath;
+    }
 }

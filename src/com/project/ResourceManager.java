@@ -50,31 +50,31 @@ public class ResourceManager {
             if (getInstance().zooKeeper.exists(APPLICATION_ROOT_PATH, false) != null) {
                 if (getInstance().zooKeeper.exists(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH, false)
                         != null) {
-                        createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + IDLE_SLAVES_PATH,
-                                "IdleSlaves".getBytes(), CreateMode.PERSISTENT);
+                    createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + IDLE_SLAVES_PATH,
+                            "IdleSlaves".getBytes(), CreateMode.PERSISTENT);
 
-                        createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + BUSY_SLAVES_PATH,
-                                "BusySlaves".getBytes(), CreateMode.PERSISTENT);
+                    createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + BUSY_SLAVES_PATH,
+                            "BusySlaves".getBytes(), CreateMode.PERSISTENT);
 
-                        createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + ALL_SLAVES_PATH,
-                                "AllSlaves".getBytes(), CreateMode.PERSISTENT);
+                    createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + ALL_SLAVES_PATH,
+                            "AllSlaves".getBytes(), CreateMode.PERSISTENT);
                 } else {
                     createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH, "SlavesRoot".getBytes(),
                             CreateMode.PERSISTENT);
                 }
-                    createZNode(APPLICATION_ROOT_PATH + MASTER_ROOT_PATH, "MastersRoot".getBytes(),
-                            CreateMode.PERSISTENT);
+                createZNode(APPLICATION_ROOT_PATH + MASTER_ROOT_PATH, "MastersRoot".getBytes(),
+                        CreateMode.PERSISTENT);
 
-                    createZNode(APPLICATION_ROOT_PATH + TASKS_ROOT_PATH, "TasksRoot".getBytes(),
-                            CreateMode.PERSISTENT);
+                createZNode(APPLICATION_ROOT_PATH + TASKS_ROOT_PATH, "TasksRoot".getBytes(),
+                        CreateMode.PERSISTENT);
 
             } else {
                 createZNode(APPLICATION_ROOT_PATH, "MapReduceRoot".getBytes(),
                         CreateMode.PERSISTENT);
             }
 
-            for(Integer slaveID : slaveIDs) {
-                createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + ALL_SLAVES_PATH + slaveID,
+            for (Integer slaveID : slaveIDs) {
+                createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + ALL_SLAVES_PATH + "/" + slaveID,
                         ("Slave" + slaveID).getBytes(), CreateMode.PERSISTENT);
             }
         } catch (KeeperException | InterruptedException e) {
@@ -133,57 +133,60 @@ public class ResourceManager {
     public static void registerNode(Node node) {
         switch (node.getType()) {
             case MASTER:
-                createZNode(APPLICATION_ROOT_PATH + MASTER_ROOT_PATH + node.getNodeID(),
+                createZNode(APPLICATION_ROOT_PATH + MASTER_ROOT_PATH + "/" + node.getNodeID(),
                         Node.serialize(node), CreateMode.EPHEMERAL);
                 break;
 
             case SLAVE:
-                createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + node.getNodeID(),
+                createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + "/" + node.getNodeID(),
                         Node.serialize(node), CreateMode.EPHEMERAL);
+                try {
+                    getInstance().zooKeeper.exists(APPLICATION_ROOT_PATH + TASKS_ROOT_PATH + "/" + node.getNodeID(),
+                            MapRSession.getInstance().getActiveNode().getTaskTracker().taskWatcher);
+                } catch (KeeperException | InterruptedException e) {
+                    e.printStackTrace();
+                }
                 break;
         }
     }
 
-    public static void changeNodeState(String node, Node.Status status) {
+    public static void changeNodeState(int nodeID, Node.Status status) {
         try {
             switch (status) {
                 case STARTUP:
-                    createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + IDLE_SLAVES_PATH + node,
-                            node.getBytes(), CreateMode.EPHEMERAL);
+                    createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + IDLE_SLAVES_PATH + "/" + nodeID,
+                            (nodeID + "").getBytes(), CreateMode.EPHEMERAL);
                     break;
 
                 case IDLE:
                     getInstance().zooKeeper.delete(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH
-                            + BUSY_SLAVES_PATH + node, -1);
-                    createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + IDLE_SLAVES_PATH + node,
-                            node.getBytes(), CreateMode.EPHEMERAL);
+                            + BUSY_SLAVES_PATH + "/" + nodeID, -1);
+                    createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + IDLE_SLAVES_PATH + "/" + nodeID,
+                            (nodeID + "").getBytes(), CreateMode.EPHEMERAL);
                     break;
 
                 case BUSY:
                     getInstance().zooKeeper.delete(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH
-                            + IDLE_SLAVES_PATH + node, -1);
-                    createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + BUSY_SLAVES_PATH + node,
-                            node.getBytes(), CreateMode.EPHEMERAL);
+                            + IDLE_SLAVES_PATH + "/" + nodeID, -1);
+                    createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + BUSY_SLAVES_PATH + "/" + nodeID,
+                            (nodeID + "").getBytes(), CreateMode.EPHEMERAL);
                     break;
 
                 case OFFLINE:
-                    if(getInstance().zooKeeper.exists(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH
-                            + ALL_SLAVES_PATH + node, false)
-                            == null)
-                        createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + ALL_SLAVES_PATH + node,
-                                node.getBytes(), CreateMode.PERSISTENT);
+                    createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + ALL_SLAVES_PATH + "/" + nodeID,
+                            (nodeID + "").getBytes(), CreateMode.PERSISTENT);
 
-                    if(getInstance().zooKeeper.exists(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH
-                            + BUSY_SLAVES_PATH + node, false)
+                    if (getInstance().zooKeeper.exists(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH
+                            + BUSY_SLAVES_PATH + "/" + nodeID, false)
                             == null)
                         getInstance().zooKeeper.delete(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH
-                                + BUSY_SLAVES_PATH + node, -1);
+                                + BUSY_SLAVES_PATH + "/" + nodeID, -1);
 
-                    else if(getInstance().zooKeeper.exists(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH
-                            + IDLE_SLAVES_PATH + node, false)
+                    else if (getInstance().zooKeeper.exists(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH
+                            + IDLE_SLAVES_PATH + "/" + nodeID, false)
                             == null)
                         getInstance().zooKeeper.delete(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH
-                                + IDLE_SLAVES_PATH + node, -1);
+                                + IDLE_SLAVES_PATH + "/" + nodeID, -1);
                     break;
             }
         } catch (InterruptedException | KeeperException e) {
@@ -191,12 +194,21 @@ public class ResourceManager {
         }
     }
 
-    public static void dispatchTask(Task task)  {
+    public static void dispatchTask(Task task) {
         createZNode(APPLICATION_ROOT_PATH + TASKS_ROOT_PATH + task.getExecutorID(),
                 Task.serialize(task), CreateMode.EPHEMERAL);
     }
 
-    public static Task getRunningTask(String nodePath) {
+    public static void modifyTask(Task task) {
+        try {
+            getInstance().zooKeeper.setData(APPLICATION_ROOT_PATH + TASKS_ROOT_PATH
+                    + task.getExecutorID(), Task.serialize(task), -1);
+        } catch (KeeperException | InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static Task getActiveTaskFor(String nodePath) {
         try {
             return Task.deserialize(getInstance().zooKeeper.getData(nodePath, false, null));
         } catch (KeeperException | InterruptedException e) {
@@ -212,20 +224,18 @@ public class ResourceManager {
         return resourceManagerInstance;
     }
 
-    private class EventWatcher implements Watcher   {
+    private class EventWatcher implements Watcher {
 
         @Override
         public void process(WatchedEvent event) {
         }
     }
 
-    private static void createZNode(String path, byte[] data, CreateMode createMode)    {
+    private static void createZNode(String path, byte[] data, CreateMode createMode) {
 
         try {
-            if (getInstance().zooKeeper.exists(path, false) == null) {
-                getInstance().zooKeeper.create(path,
-                        data, ZooDefs.Ids.OPEN_ACL_UNSAFE, createMode);
-            }
+            if (getInstance().zooKeeper.exists(path, false) == null)
+                getInstance().zooKeeper.create(path, data, ZooDefs.Ids.OPEN_ACL_UNSAFE, createMode);
         } catch (KeeperException | InterruptedException e) {
             e.printStackTrace();
         }

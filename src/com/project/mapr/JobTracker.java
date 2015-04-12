@@ -41,7 +41,6 @@ public class JobTracker {
     }
 
     public void start() {
-        ResourceManager.configureResourceManager();
         connectToSlaves();
         initializeMapTasks();
         assignTasks();
@@ -156,7 +155,7 @@ public class JobTracker {
 
             switch (event.getType()) {
                 case NodeDataChanged:
-                    Task task = ResourceManager.getRunningTask(event.getPath());
+                    Task task = ResourceManager.getActiveTaskFor(event.getPath());
 
                     switch (task.getStatus()) {
                         case RUNNING:
