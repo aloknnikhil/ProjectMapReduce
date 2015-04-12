@@ -61,7 +61,7 @@ public class TaskTracker implements OutputCollector {
     }
 
     @Override
-    public void collect(Pair<String, String> keyValuePair) {
+    public void collect(Pair<String, Integer> keyValuePair) {
         try {
             PrintWriter printWriter = new PrintWriter(new FileWriter(intermediateFile, true));
             printWriter.println(keyValuePair.getKey() + ":" + keyValuePair.getValue());

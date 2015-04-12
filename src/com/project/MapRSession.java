@@ -76,7 +76,7 @@ public class MapRSession {
     }
 
     public static File getRootDir() {
-        return mapRSessionInstance.sessionDir;
+        return getInstance().sessionDir;
     }
 
     public static MapRSession getInstance() {
