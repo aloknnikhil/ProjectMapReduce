@@ -21,14 +21,14 @@ public class JobTracker {
     private HashMap<Integer, Queue<Task>> completedTasks;
     private List<Task> pendingTasks;
     private HashMap<Integer, Queue<Task>> allTasks;
-    private List<Node> slaveNodes;
+    private List<Node> activeSlaves;
     private Input jobInput;
     private Output jobOutput;
     public Watcher taskWatcher;
 
     private File intermediateDir = new File("intermediate");
 
-    public JobTracker(Input inputFile, List<Node> slaveNodes) {
+    public JobTracker(Input inputFile) {
         runningTasks = new HashMap<>();
         completedTasks = new HashMap<>();
         allTasks = new HashMap<>();
@@ -38,13 +38,30 @@ public class JobTracker {
         jobOutput = new Output(new File("results.txt"));
         if (!intermediateDir.exists())
             intermediateDir.mkdir();
-        this.slaveNodes = slaveNodes;
     }
 
-    public void startScheduler() {
+    public void start() {
+        ResourceManager.configureResourceManager();
+        connectToSlaves();
         initializeMapTasks();
         assignTasks();
         beginTasks();
+    }
+
+    private void connectToSlaves()  {
+        List<Node> slaveNodes = new ArrayList<>();
+        while(ResourceManager.getIdleSlavePaths().size() != ResourceManager.getAllSlavePaths().size())  {
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+
+        for (String slavePath : ResourceManager.getIdleSlavePaths())    {
+            slaveNodes.add(ResourceManager.getNodeFrom(slavePath));
+        }
+        this.activeSlaves = slaveNodes;
     }
 
     private void initializeMapTasks() {
@@ -82,12 +99,12 @@ public class JobTracker {
     }
 
     private void assignTasks() {
-        Iterator nodeIterator = slaveNodes.iterator();
+        Iterator nodeIterator = activeSlaves.iterator();
         Node temp;
         for (Task task : pendingTasks) {
             pendingTasks.remove(task);
             if (!nodeIterator.hasNext())
-                nodeIterator = slaveNodes.iterator();
+                nodeIterator = activeSlaves.iterator();
 
             temp = (Node) nodeIterator.next();
 

@@ -1,6 +1,9 @@
 package com.project.utils;
 
 import com.project.MapRSession;
+import com.project.ResourceManager;
+import com.project.mapr.JobTracker;
+import com.project.mapr.TaskTracker;
 import com.project.storage.*;
 
 import java.io.*;
@@ -10,7 +13,7 @@ import java.io.*;
  */
 public class Node implements Serializable {
 
-    public enum NodeType {
+    public enum Type {
         MASTER,
         SLAVE
     }
@@ -19,28 +22,34 @@ public class Node implements Serializable {
         STARTUP,
         IDLE,
         BUSY,
-        DEAD
+        OFFLINE
     }
 
-    private NodeType type;
+    private Type type;
     private int nodeID;
+    private JobTracker jobTracker;
+    private TaskTracker taskTracker;
 
-    public Node(NodeType type, int nodeID) {
+    public Node(Type type, int nodeID) {
         this.type = type;
         this.nodeID = nodeID;
+        if(this.type == Type.MASTER)
+            jobTracker = new JobTracker(MapRSession.getInstance().getInput());
+
+        taskTracker = new TaskTracker();
     }
 
     public void startNode() {
 
-        MapRSession.startTaskTracker();
-        MapRSession.startDataNode();
-
         //If the com.alok.utils.Node is a master node, then we need additional setup procedures
-        if (type == NodeType.MASTER) {
-            MapRSession.startJobTracker();
+        if (type == Type.MASTER) {
+            jobTracker.start();
             FileSystem.setFileSystemManager(this);
             FileSystem.startNameNodeService();
+        } else {
         }
+
+        ResourceManager.registerNode(this);
     }
 
     public static byte[] serialize(Node node) {
@@ -69,5 +78,17 @@ public class Node implements Serializable {
 
     public int getNodeID() {
         return nodeID;
+    }
+
+    public Type getType() {
+        return type;
+    }
+
+    public JobTracker getJobTracker() {
+        return jobTracker;
+    }
+
+    public TaskTracker getTaskTracker() {
+        return taskTracker;
     }
 }
