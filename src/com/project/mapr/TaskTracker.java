@@ -5,56 +5,33 @@ import com.project.ResourceManager;
 import com.project.application.Mapper;
 import com.project.application.OutputCollector;
 import com.project.application.Reducer;
+import com.project.application.WordCount;
 import com.project.storage.FileSystem;
 import com.project.utils.Node;
 import com.project.utils.Output;
 import com.project.utils.Task;
 import javafx.util.Pair;
-import org.apache.zookeeper.WatchedEvent;
-import org.apache.zookeeper.Watcher;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.PrintWriter;
+import java.io.*;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
  */
-public class TaskTracker implements OutputCollector {
+public class TaskTracker implements OutputCollector, Serializable {
 
     private Mapper mapper;
     private Reducer reducer;
-    public TaskWatcher taskWatcher;
     private File intermediateFile;
 
     public TaskTracker()    {
-        taskWatcher = new TaskWatcher();
-        intermediateFile = new File("intermediatefile");
+        mapper = new WordCount();
+        reducer = new WordCount();
+        intermediateFile = new File(MapRSession.getRootDir(), "intermediatefile");
     }
 
-    public class TaskWatcher implements Watcher {
-
-        @Override
-        public void process(WatchedEvent event) {
-
-            switch (event.getType()) {
-                case NodeCreated:
-                    Task task = ResourceManager.getActiveTaskFor(event.getPath());
-                    switch (task.getStatus()) {
-                        case INITIALIZED:
-                            if(task.getType() == Task.Type.MAP)
-                                task.setStatus(Task.Status.RUNNING);
-                                ResourceManager.modifyTask(task);
-                                runMap(task);
-                            break;
-                    }
-                    break;
-            }
-        }
-    }
-
-    private void runMap(Task task)   {
+    public void runMap(Task task)   {
+        ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
+                Node.Status.BUSY);
         File file = FileSystem.copyFromRemotePath(task.getTaskInput().getRemoteDataPath());
         mapper.map(file, this);
         finishTask(task);

@@ -21,46 +21,49 @@ public class MapRSession {
     private Input input;
     private Node activeNode;
     private int nodeID;
+    private String zookeeperHost = "127.0.0.1";
+    private String cassandraHost = "127.0.0.1";
     public static boolean flag = false;
 
-    public static void main(String []args)   {
-       new MapRSession().startSession(args);
+    public static void main(String[] args) {
+        mapRSessionInstance = new MapRSession();
+        mapRSessionInstance.startSession(args);
     }
 
-    public void startSession(String []args)  {
+    public void startSession(String[] args) {
+        nodeID = Integer.parseInt(args[0]);
         configureSession();
         configureActiveNode();
     }
 
     private void configureSession() {
-        sessionDir = new File("session" + System.currentTimeMillis());
+        sessionDir = new File("session" + nodeID + "_" + System.currentTimeMillis());
         sessionDir.mkdir();
         input = new Input(new File("input"));
     }
 
-    private void configureActiveNode()  {
+    private void configureActiveNode() {
         File masterConfig = new File("master");
         File slaveConfig = new File("slaves");
         BufferedReader configReader;
         List<Integer> slaveIDs = new ArrayList<>();
         String temp;
-        if(masterConfig.exists()) {
+        if (masterConfig.exists()) {
             try {
                 configReader = new BufferedReader(new FileReader(masterConfig));
-                if((temp = configReader.readLine()) != null)    {
-                    if(temp.equals(nodeID + ""))    {
+                if ((temp = configReader.readLine()) != null) {
+                    if (temp.equals(nodeID + "")) {
                         activeNode = new Node(Node.Type.MASTER, nodeID);
-                    } else  {
+                        if (slaveConfig.exists()) {
+                            configReader = new BufferedReader(new FileReader(slaveConfig));
+                            while ((temp = configReader.readLine()) != null) {
+                                slaveIDs.add(Integer.valueOf(temp));
+                            }
+                            ResourceManager.configureResourceManager(slaveIDs);
+                        }
+                    } else {
                         activeNode = new Node(Node.Type.SLAVE, nodeID);
                     }
-                }
-
-                if(slaveConfig.exists()) {
-                    configReader = new BufferedReader(new FileReader(slaveConfig));
-                    while ((temp = configReader.readLine()) != null)    {
-                        slaveIDs.add(Integer.valueOf(temp));
-                    }
-                    ResourceManager.configureResourceManager(slaveIDs);
                 }
             } catch (java.io.IOException e) {
                 e.printStackTrace();
@@ -80,14 +83,19 @@ public class MapRSession {
     }
 
     public static MapRSession getInstance() {
-        if(mapRSessionInstance == null)
-            mapRSessionInstance = new MapRSession();
-
         return mapRSessionInstance;
     }
 
     public Input getInput() {
         return input;
+    }
+
+    public String getZookeeperHost() {
+        return zookeeperHost;
+    }
+
+    public String getCassandraHost() {
+        return cassandraHost;
     }
 
     public static void exit(int status) {

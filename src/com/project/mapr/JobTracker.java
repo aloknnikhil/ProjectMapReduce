@@ -11,11 +11,12 @@ import org.apache.zookeeper.Watcher;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * Created by alok on 4/11/15.
  */
-public class JobTracker {
+public class JobTracker implements Serializable {
 
     private HashMap<Integer, Queue<Task>> runningTasks;
     private HashMap<Integer, Queue<Task>> completedTasks;
@@ -24,7 +25,6 @@ public class JobTracker {
     private List<Node> activeSlaves;
     private Input jobInput;
     private Output jobOutput;
-    public Watcher taskWatcher;
 
     private File intermediateDir = new File("intermediate");
 
@@ -33,7 +33,6 @@ public class JobTracker {
         completedTasks = new HashMap<>();
         allTasks = new HashMap<>();
         pendingTasks = new ArrayList<>();
-        taskWatcher = new TaskWatcher();
         jobInput = inputFile;
         jobOutput = new Output(new File("results.txt"));
         if (!intermediateDir.exists())
@@ -49,11 +48,17 @@ public class JobTracker {
 
     private void connectToSlaves()  {
         List<Node> slaveNodes = new ArrayList<>();
-        while(ResourceManager.getIdleSlavePaths().size() != ResourceManager.getAllSlavePaths().size())  {
-            try {
-                Thread.sleep(500);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+        while (true)    {
+            if(jobInput.getFileCount() <= ResourceManager.getIdleSlavePaths().size())    {
+                break;
+            } else if(ResourceManager.getIdleSlavePaths().size() == ResourceManager.getAllSlavePaths().size())  {
+                break;
+            } else {
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
             }
         }
 
@@ -100,16 +105,20 @@ public class JobTracker {
     private void assignTasks() {
         Iterator nodeIterator = activeSlaves.iterator();
         Node temp;
+        Queue<Task> taskQueue;
         for (Task task : pendingTasks) {
-            pendingTasks.remove(task);
             if (!nodeIterator.hasNext())
                 nodeIterator = activeSlaves.iterator();
 
             temp = (Node) nodeIterator.next();
 
+            task.setExecutorID(temp.getNodeID());
             if (allTasks.containsKey(temp.getNodeID())) {
-                task.setExecutorID(temp.getNodeID());
                 allTasks.get(temp.getNodeID()).add(task);
+            } else {
+                taskQueue =  new LinkedBlockingQueue<>();
+                taskQueue.add(task);
+                allTasks.put(temp.getNodeID(), taskQueue);
             }
         }
     }
@@ -120,7 +129,7 @@ public class JobTracker {
         }
     }
 
-    private void markTaskComplete(Task task) {
+    public void markTaskComplete(Task task) {
         if (completedTasks.containsKey(task.getExecutorID())) {
             completedTasks.get(task.getExecutorID()).add(task);
             runningTasks.get(task.getExecutorID()).remove();
@@ -148,33 +157,7 @@ public class JobTracker {
         return pendingTasks;
     }
 
-    public class TaskWatcher implements Watcher {
-
-        @Override
-        public void process(WatchedEvent event) {
-
-            switch (event.getType()) {
-                case NodeDataChanged:
-                    Task task = ResourceManager.getActiveTaskFor(event.getPath());
-
-                    switch (task.getStatus()) {
-                        case RUNNING:
-                            //TODO Check if the task running time exceeded the timeout period
-                            //If so, re-schedule on another node
-                            break;
-
-                        case COMPLETE:
-                            collectTaskOutput(task);
-                            markTaskComplete(task);
-                    }
-
-                    break;
-            }
-
-        }
-    }
-
-    private void collectTaskOutput(Task task) {
+    public void collectTaskOutput(Task task) {
         File localFile;
         localFile = FileSystem.copyFromRemotePath(task.getTaskOutput().getRemoteDataPath());
         parseKeyValuePair(localFile, task.getType());

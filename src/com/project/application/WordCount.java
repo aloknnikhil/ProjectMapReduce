@@ -1,18 +1,18 @@
 package com.project.application;
 
-import com.project.utils.Input;
 import javafx.util.Pair;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import java.io.Serializable;
 import java.util.Iterator;
 import java.util.StringTokenizer;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
  */
-public class WordCount implements Mapper, Reducer {
+public class WordCount implements Mapper, Reducer, Serializable {
     @Override
     public void map(File key, OutputCollector outputCollector) {
         String temp;

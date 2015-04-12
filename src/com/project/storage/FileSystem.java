@@ -15,12 +15,13 @@ import com.netflix.astyanax.recipes.storage.ChunkedStorage;
 import com.netflix.astyanax.recipes.storage.ObjectMetadata;
 import com.netflix.astyanax.serializers.StringSerializer;
 import com.netflix.astyanax.thrift.ThriftFamilyFactory;
+import com.project.MapRSession;
 import com.project.utils.LogFile;
 import com.project.utils.Node;
-import org.apache.cassandra.thrift.InvalidRequestException;
-import org.apache.commons.io.IOUtils;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
@@ -29,34 +30,23 @@ public class FileSystem {
 
     private static FileSystem fileSystemInstance;
     private Node masterNode;
-    private String backStoreAddress = "127.0.0.1";
     private AstyanaxContext<Keyspace> context;
     private Keyspace keyspace;
     private CassandraChunkedStorageProvider chunkedStorageProvider;
     public static ColumnFamily<String, String> CF_CHUNK =
             ColumnFamily.newColumnFamily("cfchunk", StringSerializer.get(), StringSerializer.get());
 
-    public FileSystem() {
-        //Placeholder to enforce Singleton Paradigm
+    private FileSystem() {
+        configureFileSystem();
     }
 
-    public static void main(String[] args) {
-        fileSystemInstance = new FileSystem();
-        fileSystemInstance.configureFileSystem();
-    }
-
-    public void configureFileSystem() {
+    private void configureFileSystem() {
         connectToBackStore();
-        disconnectFromBackStore();
     }
 
     public static void setFileSystemManager(Node masterNode) {
 
         getInstance().masterNode = masterNode;
-    }
-
-    public static void startNameNodeService() {
-
     }
 
     private static FileSystem getInstance() {
@@ -81,11 +71,8 @@ public class FileSystem {
     }
 
     public static File copyFromRemotePath(String remoteDataPath) {
-        File remoteFile = new File(remoteDataPath + "remote");
-        String temp;
+        File remoteFile = new File(MapRSession.getRootDir(), "remote");
         try {
-            ObjectMetadata metadata = ChunkedStorage.newInfoReader(getInstance().
-                    chunkedStorageProvider, remoteDataPath).call();
             FileOutputStream outputStream = new FileOutputStream(remoteFile);
             ChunkedStorage.newReader(getInstance().chunkedStorageProvider, remoteDataPath, outputStream)
                     .withBatchSize(11)
@@ -109,7 +96,7 @@ public class FileSystem {
                 .withConnectionPoolConfiguration(new ConnectionPoolConfigurationImpl("MapRConnectionPool")
                         .setPort(9160)
                         .setMaxConnsPerHost(1)
-                        .setSeeds(backStoreAddress))
+                        .setSeeds(MapRSession.getInstance().getCassandraHost()))
                 .withConnectionPoolMonitor(new CountingConnectionPoolMonitor())
                 .buildKeyspace(ThriftFamilyFactory.getInstance());
 
@@ -136,7 +123,6 @@ public class FileSystem {
         }
 
         chunkedStorageProvider = new CassandraChunkedStorageProvider(keyspace, CF_CHUNK);
-        copyFromRemotePath(copyFromLocalFile(new File("testFile")));
     }
 
     private void disconnectFromBackStore() {

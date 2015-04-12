@@ -1,11 +1,12 @@
 package com.project.utils;
 
 import java.io.File;
+import java.io.Serializable;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
  */
-public class Output {
+public class Output implements Serializable {
 
     public enum Type    {
         LOCAL,

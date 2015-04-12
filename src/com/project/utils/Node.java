@@ -4,7 +4,9 @@ import com.project.MapRSession;
 import com.project.ResourceManager;
 import com.project.mapr.JobTracker;
 import com.project.mapr.TaskTracker;
-import com.project.storage.*;
+import com.project.storage.FileSystem;
+import org.apache.zookeeper.WatchedEvent;
+import org.apache.zookeeper.Watcher;
 
 import java.io.*;
 
@@ -29,14 +31,16 @@ public class Node implements Serializable {
     private int nodeID;
     private JobTracker jobTracker;
     private TaskTracker taskTracker;
+    private TaskWatcher taskWatcher;
 
     public Node(Type type, int nodeID) {
         this.type = type;
         this.nodeID = nodeID;
-        if(this.type == Type.MASTER)
+        if (this.type == Type.MASTER)
             jobTracker = new JobTracker(MapRSession.getInstance().getInput());
 
         taskTracker = new TaskTracker();
+        taskWatcher = new TaskWatcher();
     }
 
     public void startNode() {
@@ -45,11 +49,16 @@ public class Node implements Serializable {
         if (type == Type.MASTER) {
             jobTracker.start();
             FileSystem.setFileSystemManager(this);
-            FileSystem.startNameNodeService();
-        } else {
         }
-
         ResourceManager.registerNode(this);
+
+        while (true) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     public static byte[] serialize(Node node) {
@@ -66,10 +75,13 @@ public class Node implements Serializable {
 
     public static Node deserialize(byte[] bytes) {
         ByteArrayInputStream b = new ByteArrayInputStream(bytes);
-        ObjectInputStream o = null;
+        ObjectInputStream o;
+        Node node;
         try {
             o = new ObjectInputStream(b);
-            return (Node) o.readObject();
+            node = (Node) o.readObject();
+            o.close();
+            return node;
         } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
             return null;
@@ -90,5 +102,59 @@ public class Node implements Serializable {
 
     public TaskTracker getTaskTracker() {
         return taskTracker;
+    }
+
+    public TaskWatcher getTaskWatcher() {
+        return taskWatcher;
+    }
+
+    public class TaskWatcher implements Watcher, Serializable {
+
+        @Override
+        public void process(WatchedEvent event) {
+
+            switch (Node.this.getType()) {
+                case MASTER:
+                    switch (event.getType()) {
+                        case NodeDataChanged:
+                            Task task = ResourceManager.getActiveTaskFor(event.getPath());
+                            switch (task.getStatus()) {
+                                case RUNNING:
+                                    //TODO Check if the task running time exceeded the timeout period
+                                    ResourceManager.setWatcherOn(event.getPath(), Node.this);
+                                    break;
+
+                                case COMPLETE:
+                                    jobTracker.collectTaskOutput(task);
+                                    jobTracker.markTaskComplete(task);
+                            }
+
+                            break;
+                    }
+                    break;
+
+                case SLAVE:
+                    switch (event.getType()) {
+                        case NodeCreated:
+                            final Task task = ResourceManager.getActiveTaskFor(event.getPath());
+                            switch (task.getStatus()) {
+                                case INITIALIZED:
+                                    if (task.getType() == Task.Type.MAP)
+                                        task.setStatus(Task.Status.RUNNING);
+                                    ResourceManager.modifyTask(task);
+                                    new Thread(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            taskTracker.runMap(task);
+                                        }
+                                    }).start();
+                                    ;
+                                    break;
+                            }
+                            break;
+                    }
+                    break;
+            }
+        }
     }
 }
