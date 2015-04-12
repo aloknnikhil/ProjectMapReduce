@@ -8,5 +8,6 @@
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="library" name="org.apache.zookeeper:zookeeper:3.4.6" level="project" />
+    <orderEntry type="library" name="com.netflix.astyanax:astyanax:2.0.2" level="project" />
   </component>
 </module>
