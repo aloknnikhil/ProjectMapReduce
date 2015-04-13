@@ -26,6 +26,7 @@ public class JobTracker implements Serializable {
     private Input jobInput;
     private Output jobOutput;
     private int outstandingTaskCount = 0;
+    private boolean isMapPhase = true;
 
     private File intermediateDir = new File("intermediate");
 
@@ -50,20 +51,30 @@ public class JobTracker implements Serializable {
         List<Node> slaveNodes = new ArrayList<>();
         while (true) {
             if (jobInput.getFileCount() <= ResourceManager.getIdleSlavePaths().size()) {
+                for (String slavePath : ResourceManager.getIdleSlavePaths()) {
+                    if (ResourceManager.getNodeFrom(slavePath) == null)
+                        continue;
+                    slaveNodes.add(ResourceManager.getNodeFrom(slavePath));
+                }
+                if(slaveNodes.size() == 0)
+                    continue;
                 break;
             } else if (ResourceManager.getIdleSlavePaths().size() == ResourceManager.getAllSlavePaths().size()) {
+                for (String slavePath : ResourceManager.getIdleSlavePaths()) {
+                    if (ResourceManager.getNodeFrom(slavePath) == null)
+                        continue;
+                    slaveNodes.add(ResourceManager.getNodeFrom(slavePath));
+                }
+                if(slaveNodes.size() == 0)
+                    continue;
                 break;
             } else {
                 try {
-                    Thread.sleep(500);
+                    Thread.sleep(250);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
             }
-        }
-
-        for (String slavePath : ResourceManager.getIdleSlavePaths()) {
-            slaveNodes.add(ResourceManager.getNodeFrom(slavePath));
         }
         this.activeSlaves = slaveNodes;
     }
@@ -180,13 +191,22 @@ public class JobTracker implements Serializable {
             taskQueue.add(task);
             completedTasks.put(task.getExecutorID(), taskQueue);
             try {
-                Thread.sleep(100);
+                Thread.sleep(250);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
             if (allTasks.get(task.getExecutorID()).size() > 0) {
                 outstandingTaskCount++;
                 ResourceManager.modifyTask(allTasks.get(task.getExecutorID()).remove());
+            }
+        }
+
+        synchronized (jobOutput) {
+            if (getOutstandingTaskCount() == 0 && isMapPhase) {
+                isMapPhase = false;
+                initializeReduceTasks();
+                assignTasks();
+                beginTasks();
             }
         }
     }

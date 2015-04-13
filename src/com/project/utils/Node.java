@@ -32,7 +32,6 @@ public class Node implements Serializable {
     private JobTracker jobTracker;
     private TaskTracker taskTracker;
     private TaskWatcher taskWatcher;
-    private boolean isMapPhase = true;
 
     public Node(Type type, int nodeID) {
         this.type = type;
@@ -83,7 +82,9 @@ public class Node implements Serializable {
             node = (Node) o.readObject();
             o.close();
             return node;
-        } catch (IOException | ClassNotFoundException e) {
+        } catch (EOFException e)    {
+            return null;
+        }catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
             return null;
         }
@@ -133,12 +134,6 @@ public class Node implements Serializable {
                                             System.out.println("Number of tasks completed: "
                                                     + jobTracker.getCompletedTasks().size() + " Number of outstanding tasks: "
                                                     + jobTracker.getOutstandingTaskCount());
-                                            if(jobTracker.getOutstandingTaskCount() == 0 && isMapPhase) {
-                                                isMapPhase = false;
-                                                jobTracker.initializeReduceTasks();
-                                                jobTracker.assignTasks();
-                                                jobTracker.beginTasks();
-                                            }
                                         }
                                     }).start();
                             }
