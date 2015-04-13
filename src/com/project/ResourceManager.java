@@ -14,7 +14,7 @@ import java.util.List;
 public class ResourceManager {
 
     private ZooKeeper zooKeeper;
-    private static final int SESSION_TIMEOUT = 10000;
+    private static final int SESSION_TIMEOUT = 65000;
     private static ResourceManager resourceManagerInstance;
 
     public final static String APPLICATION_ROOT_PATH = "/mapr";

@@ -12,13 +12,13 @@ import org.apache.zookeeper.Watcher;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.locks.Lock;
 
 /**
  * Created by alok on 4/11/15.
  */
 public class JobTracker implements Serializable {
 
-    private HashMap<Integer, Queue<Task>> runningTasks;
     private HashMap<Integer, Queue<Task>> completedTasks;
     private List<Task> pendingTasks;
     private HashMap<Integer, Queue<Task>> allTasks;
@@ -30,7 +30,6 @@ public class JobTracker implements Serializable {
     private File intermediateDir = new File("intermediate");
 
     public JobTracker(Input inputFile) {
-        runningTasks = new HashMap<>();
         completedTasks = new HashMap<>();
         allTasks = new HashMap<>();
         pendingTasks = new ArrayList<>();
@@ -76,8 +75,8 @@ public class JobTracker implements Serializable {
         pendingTasks.clear();
 
         for (File file : jobInput.getLocalFile().listFiles()) {
-            if(file.isDirectory())  {
-                for(File subFile : file.listFiles())    {
+            if (file.isDirectory()) {
+                for (File subFile : file.listFiles()) {
                     task = new Task();
                     task.setType(Task.Type.MAP);
                     task.setStatus(Task.Status.INITIALIZED);
@@ -109,10 +108,9 @@ public class JobTracker implements Serializable {
         pendingTasks.clear();
         allTasks.clear();
         completedTasks.clear();
-        runningTasks.clear();
         for (File file : intermediateDir.listFiles()) {
-            if(file.isDirectory())  {
-                for(File subFile : file.listFiles())    {
+            if (file.isDirectory()) {
+                for (File subFile : file.listFiles()) {
                     task = new Task();
                     task.setType(Task.Type.REDUCE);
                     task.setStatus(Task.Status.INITIALIZED);
@@ -160,16 +158,16 @@ public class JobTracker implements Serializable {
         for (Map.Entry<Integer, Queue<Task>> entry : allTasks.entrySet()) {
             outstandingTaskCount++;
             try {
-                Thread.sleep(1000);
+                Thread.sleep(100);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-                if (entry.getValue().peek().getType() == Task.Type.MAP)
-                    ResourceManager.dispatchTask(entry.getValue().remove());
-                else if (entry.getValue().peek().getType() == Task.Type.REDUCE)
-                    ResourceManager.modifyTask(entry.getValue().remove());
-            }
+            if (entry.getValue().peek().getType() == Task.Type.MAP)
+                ResourceManager.dispatchTask(entry.getValue().remove());
+            else if (entry.getValue().peek().getType() == Task.Type.REDUCE)
+                ResourceManager.modifyTask(entry.getValue().remove());
         }
+    }
 
     public void markTaskComplete(Task task) {
         Queue<Task> taskQueue;
@@ -177,13 +175,15 @@ public class JobTracker implements Serializable {
         outstandingTaskCount--;
         if (completedTasks.containsKey(task.getExecutorID())) {
             completedTasks.get(task.getExecutorID()).add(task);
-            runningTasks.get(task.getExecutorID()).remove();
-            runningTasks.put(task.getExecutorID(), runningTasks.get(task.getExecutorID()));
         } else {
             taskQueue = new LinkedBlockingQueue<>();
             taskQueue.add(task);
             completedTasks.put(task.getExecutorID(), taskQueue);
-
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
             if (allTasks.get(task.getExecutorID()).size() > 0) {
                 outstandingTaskCount++;
                 ResourceManager.modifyTask(allTasks.get(task.getExecutorID()).remove());
@@ -193,10 +193,6 @@ public class JobTracker implements Serializable {
 
     public Task getPendingTaskFor(Node slaveNode) {
         return new Task();
-    }
-
-    public HashMap<Integer, Queue<Task>> getRunningTasks() {
-        return runningTasks;
     }
 
     public HashMap<Integer, Queue<Task>> getCompletedTasks() {
@@ -217,11 +213,13 @@ public class JobTracker implements Serializable {
 
     public void collectTaskOutput(Task task) {
         File localFile;
-        localFile = FileSystem.copyFromRemotePath(task.getTaskOutput().getRemoteDataPath());
-        parseKeyValuePair(localFile, task.getType());
+        synchronized (jobInput) {
+            localFile = FileSystem.copyFromRemotePath(task.getTaskOutput().getRemoteDataPath());
+            parseKeyValuePair(localFile, task.getType());
+        }
     }
 
-    private synchronized void parseKeyValuePair(File intermediateFile, Task.Type type) {
+    private void parseKeyValuePair(File intermediateFile, Task.Type type) {
         BufferedReader bufferedReader;
         StringTokenizer stringTokenizer;
         String temp, key, value;

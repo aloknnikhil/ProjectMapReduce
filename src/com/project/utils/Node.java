@@ -118,24 +118,29 @@ public class Node implements Serializable {
                 case MASTER:
                     switch (event.getType()) {
                         case NodeDataChanged:
-                            Task task = ResourceManager.getActiveTaskFor(event.getPath());
+                            final Task task = ResourceManager.getActiveTaskFor(event.getPath());
                             switch (task.getStatus()) {
                                 case RUNNING:
                                     //TODO Check if the task running time exceeded the timeout period
                                     break;
 
                                 case COMPLETE:
-                                    jobTracker.collectTaskOutput(task);
-                                    jobTracker.markTaskComplete(task);
-                                    System.out.println("Number of tasks completed: "
-                                            + jobTracker.getCompletedTasks().size() + " Number of outstanding tasks: "
-                                            + jobTracker.getOutstandingTaskCount());
-                                    if(jobTracker.getOutstandingTaskCount() == 0 && isMapPhase)   {
-                                        jobTracker.initializeReduceTasks();
-                                        jobTracker.assignTasks();
-                                        jobTracker.beginTasks();
-                                        isMapPhase = false;
-                                    }
+                                    new Thread(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            jobTracker.collectTaskOutput(task);
+                                            jobTracker.markTaskComplete(task);
+                                            System.out.println("Number of tasks completed: "
+                                                    + jobTracker.getCompletedTasks().size() + " Number of outstanding tasks: "
+                                                    + jobTracker.getOutstandingTaskCount());
+                                            if(jobTracker.getOutstandingTaskCount() == 0 && isMapPhase) {
+                                                isMapPhase = false;
+                                                jobTracker.initializeReduceTasks();
+                                                jobTracker.assignTasks();
+                                                jobTracker.beginTasks();
+                                            }
+                                        }
+                                    }).start();
                             }
                             break;
                     }

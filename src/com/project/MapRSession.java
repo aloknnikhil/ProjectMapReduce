@@ -21,8 +21,8 @@ public class MapRSession {
     private Input input;
     private Node activeNode;
     private int nodeID;
-    private String zookeeperHost = "127.0.0.1";
-    private String cassandraHost = "127.0.0.1";
+    private String zookeeperHost = "ece-acis-dc282.acis.ufl.edu:1499";
+    private String cassandraHost = "ece-acis-dc282.acis.ufl.edu";
     public static boolean flag = false;
 
     public static void main(String[] args) {
