@@ -1,18 +1,16 @@
 package com.project.mapr;
 
 import com.project.ResourceManager;
+import com.project.TaskHandler;
 import com.project.storage.FileSystem;
 import com.project.utils.Input;
 import com.project.utils.Node;
 import com.project.utils.Output;
 import com.project.utils.Task;
-import org.apache.zookeeper.WatchedEvent;
-import org.apache.zookeeper.Watcher;
 
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.locks.Lock;
 
 /**
  * Created by alok on 4/11/15.
@@ -169,14 +167,14 @@ public class JobTracker implements Serializable {
         for (Map.Entry<Integer, Queue<Task>> entry : allTasks.entrySet()) {
             outstandingTaskCount++;
             try {
-                Thread.sleep(100);
+                Thread.sleep(1000);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
             if (entry.getValue().peek().getType() == Task.Type.MAP)
-                ResourceManager.dispatchTask(entry.getValue().remove());
+                TaskHandler.dispatchTask(entry.getValue().remove());
             else if (entry.getValue().peek().getType() == Task.Type.REDUCE)
-                ResourceManager.modifyTask(entry.getValue().remove());
+                TaskHandler.modifyTask(entry.getValue().remove());
         }
     }
 
@@ -191,13 +189,13 @@ public class JobTracker implements Serializable {
             taskQueue.add(task);
             completedTasks.put(task.getExecutorID(), taskQueue);
             try {
-                Thread.sleep(250);
+                Thread.sleep(1000);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
             if (allTasks.get(task.getExecutorID()).size() > 0) {
                 outstandingTaskCount++;
-                ResourceManager.modifyTask(allTasks.get(task.getExecutorID()).remove());
+                TaskHandler.modifyTask(allTasks.get(task.getExecutorID()).remove());
             }
         }
 

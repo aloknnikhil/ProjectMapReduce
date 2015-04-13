@@ -2,19 +2,18 @@ package com.project.utils;
 
 import com.project.MapRSession;
 import com.project.ResourceManager;
+import com.project.TaskHandler;
 import com.project.mapr.JobTracker;
 import com.project.mapr.TaskTracker;
 import com.project.storage.FileSystem;
 import org.I0Itec.zkclient.IZkDataListener;
-import org.apache.zookeeper.WatchedEvent;
-import org.apache.zookeeper.Watcher;
 
 import java.io.*;
 
 /**
  * Created by alok on 4/11/15
  */
-public class Node implements Serializable, IZkDataListener {
+public class Node implements Serializable, IZkDataListener, TaskChangeListener {
 
     public enum Type {
         MASTER,
@@ -47,6 +46,7 @@ public class Node implements Serializable, IZkDataListener {
         //If the com.alok.utils.Node is a master node, then we need additional setup procedures
         if (type == Type.MASTER) {
             jobTracker.start();
+            TaskHandler.getInstance().subscribeToSlaves();
             FileSystem.setFileSystemManager(this);
         }
         ResourceManager.registerNode(this);
@@ -99,11 +99,19 @@ public class Node implements Serializable, IZkDataListener {
 
     @Override
     public void handleDataChange(String path, Object data) throws Exception {
-        System.out.println("Got a change event!");
+
+    }
+
+    @Override
+    public void handleDataDeleted(String s) throws Exception {
+
+    }
+
+    @Override
+    public void onTaskChanged(final Task task) {
         switch (Node.this.getType()) {
             case MASTER:
-                final Task taskMaster = Task.deserialize((byte[]) data);
-                switch (taskMaster.getStatus()) {
+                switch (task.getStatus()) {
                     case RUNNING:
                         //TODO Check if the task running time exceeded the timeout period
                         break;
@@ -112,8 +120,8 @@ public class Node implements Serializable, IZkDataListener {
                         new Thread(new Runnable() {
                             @Override
                             public void run() {
-                                jobTracker.collectTaskOutput(taskMaster);
-                                jobTracker.markTaskComplete(taskMaster);
+                                jobTracker.collectTaskOutput(task);
+                                jobTracker.markTaskComplete(task);
                                 System.out.println("Number of tasks completed: "
                                         + jobTracker.getCompletedTasks().size() + " Number of outstanding tasks: "
                                         + jobTracker.getOutstandingTaskCount());
@@ -124,25 +132,24 @@ public class Node implements Serializable, IZkDataListener {
                 break;
 
             case SLAVE:
-                final Task taskSlave = Task.deserialize((byte[]) data);
-                switch (taskSlave.getStatus()) {
+                switch (task.getStatus()) {
                     case INITIALIZED:
-                        if (taskSlave.getType() == Task.Type.MAP) {
-                            taskSlave.setStatus(Task.Status.RUNNING);
-                            ResourceManager.modifyTask(taskSlave);
+                        if (task.getType() == Task.Type.MAP) {
+                            task.setStatus(Task.Status.RUNNING);
+                            TaskHandler.modifyTask(task);
                             new Thread(new Runnable() {
                                 @Override
                                 public void run() {
-                                    taskTracker.runMap(taskSlave);
+                                    taskTracker.runMap(task);
                                 }
                             }).start();
-                        } else if (taskSlave.getType() == Task.Type.REDUCE) {
-                            taskSlave.setStatus(Task.Status.RUNNING);
-                            ResourceManager.modifyTask(taskSlave);
+                        } else if (task.getType() == Task.Type.REDUCE) {
+                            task.setStatus(Task.Status.RUNNING);
+                            TaskHandler.modifyTask(task);
                             new Thread(new Runnable() {
                                 @Override
                                 public void run() {
-                                    taskTracker.runReduce(taskSlave);
+                                    taskTracker.runReduce(task);
                                 }
                             }).start();
                         }
@@ -150,10 +157,5 @@ public class Node implements Serializable, IZkDataListener {
                 }
 
         }
-    }
-
-    @Override
-    public void handleDataDeleted(String s) throws Exception {
-
     }
 }

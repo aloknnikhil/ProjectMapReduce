@@ -2,6 +2,7 @@ package com.project.mapr;
 
 import com.project.MapRSession;
 import com.project.ResourceManager;
+import com.project.TaskHandler;
 import com.project.application.Mapper;
 import com.project.application.OutputCollector;
 import com.project.application.Reducer;
@@ -79,7 +80,7 @@ public class TaskTracker implements OutputCollector, Serializable {
     private void finishTask(Task task) {
         task.setTaskOutput(new Output(FileSystem.copyFromLocalFile(intermediateFile)));
         task.setStatus(Task.Status.COMPLETE);
-        ResourceManager.modifyTask(task);
+        TaskHandler.modifyTask(task);
         ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                 Node.Status.IDLE);
     }

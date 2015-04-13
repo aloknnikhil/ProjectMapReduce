@@ -3,12 +3,9 @@ package com.project;
 import com.project.utils.DataSerializer;
 import com.project.utils.LogFile;
 import com.project.utils.Node;
-import com.project.utils.Task;
-import org.I0Itec.zkclient.IZkDataListener;
 import org.I0Itec.zkclient.ZkClient;
 import org.apache.zookeeper.*;
 
-import java.io.IOException;
 import java.util.List;
 
 /**
@@ -109,7 +106,7 @@ public class ResourceManager {
             case SLAVE:
                 createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + IDLE_SLAVES_PATH + "/" + node.getNodeID(),
                         Node.serialize(node), CreateMode.EPHEMERAL);
-                setWatcherOn(APPLICATION_ROOT_PATH + TASKS_ROOT_PATH + "/" + node.getNodeID(), node);
+                TaskHandler.subscribeTo("" + node.getNodeID(), node);
                 break;
         }
     }
@@ -152,22 +149,6 @@ public class ResourceManager {
         }
     }
 
-    public static void dispatchTask(Task task) {
-        createZNode(APPLICATION_ROOT_PATH + TASKS_ROOT_PATH + "/" + task.getExecutorID(),
-                Task.serialize(task), CreateMode.EPHEMERAL);
-        setWatcherOn(APPLICATION_ROOT_PATH + TASKS_ROOT_PATH + "/" + task.getExecutorID(),
-                MapRSession.getInstance().getActiveNode());
-    }
-
-    public static void modifyTask(Task task) {
-        getInstance().zkClient.writeData(APPLICATION_ROOT_PATH + TASKS_ROOT_PATH
-                + "/" + task.getExecutorID(), Task.serialize(task));
-    }
-
-    public static Task getActiveTaskFor(String nodePath) {
-        return Task.deserialize((byte[]) getInstance().zkClient.readData(nodePath));
-    }
-
     public static ResourceManager getInstance() {
         if (resourceManagerInstance == null) {
             resourceManagerInstance = new ResourceManager();
@@ -186,9 +167,5 @@ public class ResourceManager {
                     getInstance().zkClient.createPersistent(path, data);
             }
         }
-    }
-
-    public static void setWatcherOn(String path, IZkDataListener iZkDataListener) {
-        getInstance().zkClient.subscribeDataChanges(path, iZkDataListener);
     }
 }

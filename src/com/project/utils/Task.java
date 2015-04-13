@@ -29,6 +29,10 @@ public class Task implements Serializable, Encoder<Task>, Decoder<Task> {
     private Type type;
     private Status status;
 
+    public Task()   {
+
+    }
+
     public int getTaskID() {
         return taskID;
     }
