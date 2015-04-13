@@ -37,6 +37,6 @@ public class WordCount implements Mapper, Reducer, Serializable {
             result += values.next();
         }
 
-        outputCollector.collect(new Pair<String, Integer>(key, result));
+        outputCollector.collect(new Pair<>(key, result));
     }
 }

@@ -127,8 +127,15 @@ public class Node implements Serializable {
                                 case COMPLETE:
                                     jobTracker.collectTaskOutput(task);
                                     jobTracker.markTaskComplete(task);
+                                    System.out.println("Number of tasks completed: "
+                                            + jobTracker.getCompletedTasks().size() + " Number of outstanding tasks: "
+                                            + jobTracker.getOutstandingTaskCount());
+                                    if(jobTracker.getOutstandingTaskCount() == jobTracker.getCompletedTasks().size())   {
+                                        jobTracker.initializeReduceTasks();
+                                        jobTracker.assignTasks();
+                                        jobTracker.beginTasks();
+                                    }
                             }
-
                             break;
                     }
                     break;
@@ -139,16 +146,25 @@ public class Node implements Serializable {
                             final Task task = ResourceManager.getActiveTaskFor(event.getPath());
                             switch (task.getStatus()) {
                                 case INITIALIZED:
-                                    if (task.getType() == Task.Type.MAP)
+                                    if (task.getType() == Task.Type.MAP) {
                                         task.setStatus(Task.Status.RUNNING);
-                                    ResourceManager.modifyTask(task);
-                                    new Thread(new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            taskTracker.runMap(task);
-                                        }
-                                    }).start();
-                                    ;
+                                        ResourceManager.modifyTask(task);
+                                        new Thread(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                taskTracker.runMap(task);
+                                            }
+                                        }).start();
+                                    } else if(task.getType() == Task.Type.REDUCE)   {
+                                        task.setStatus(Task.Status.RUNNING);
+                                        ResourceManager.modifyTask(task);
+                                        new Thread(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                taskTracker.runReduce(task);
+                                            }
+                                        }).start();
+                                    }
                                     break;
                             }
                             break;

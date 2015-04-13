@@ -13,6 +13,8 @@ import com.project.utils.Task;
 import javafx.util.Pair;
 
 import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
@@ -23,17 +25,35 @@ public class TaskTracker implements OutputCollector, Serializable {
     private Reducer reducer;
     private File intermediateFile;
 
-    public TaskTracker()    {
+    public TaskTracker() {
         mapper = new WordCount();
         reducer = new WordCount();
         intermediateFile = new File(MapRSession.getRootDir(), "intermediatefile");
     }
 
-    public void runMap(Task task)   {
+    public void runMap(Task task) {
         ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                 Node.Status.BUSY);
         File file = FileSystem.copyFromRemotePath(task.getTaskInput().getRemoteDataPath());
         mapper.map(file, this);
+        finishTask(task);
+    }
+
+    public void runReduce(Task task) {
+        ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
+                Node.Status.BUSY);
+        File file = FileSystem.copyFromRemotePath(task.getTaskInput().getRemoteDataPath());
+        List<Integer> values = new ArrayList<>();
+        String temp;
+        try {
+            BufferedReader bufferedReader = new BufferedReader(new FileReader(file));
+            while((temp = bufferedReader.readLine()) != null)   {
+                values.add(Integer.valueOf(temp));
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        reducer.reduce(file.getName(), values.iterator(), this);
         finishTask(task);
     }
 
@@ -49,7 +69,7 @@ public class TaskTracker implements OutputCollector, Serializable {
         }
     }
 
-    private void finishTask(Task task)   {
+    private void finishTask(Task task) {
         task.setTaskOutput(new Output(FileSystem.copyFromLocalFile(intermediateFile)));
         task.setStatus(Task.Status.COMPLETE);
         ResourceManager.modifyTask(task);

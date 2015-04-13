@@ -25,6 +25,7 @@ public class JobTracker implements Serializable {
     private List<Node> activeSlaves;
     private Input jobInput;
     private Output jobOutput;
+    private int outstandingTaskCount = 0;
 
     private File intermediateDir = new File("intermediate");
 
@@ -68,7 +69,7 @@ public class JobTracker implements Serializable {
         this.activeSlaves = slaveNodes;
     }
 
-    private void initializeMapTasks() {
+    public void initializeMapTasks() {
         Task task;
         Input taskInput;
         int count = 1;
@@ -86,10 +87,16 @@ public class JobTracker implements Serializable {
         }
     }
 
-    private void initializeReduceTasks() {
+    public void initializeReduceTasks() {
         Task task;
         Input taskInput;
         int count = 1;
+
+        outstandingTaskCount = 0;
+        pendingTasks.clear();
+        allTasks.clear();
+        completedTasks.clear();
+        runningTasks.clear();
         for (File file : intermediateDir.listFiles()) {
             task = new Task();
             task.setType(Task.Type.REDUCE);
@@ -102,7 +109,7 @@ public class JobTracker implements Serializable {
         }
     }
 
-    private void assignTasks() {
+    public void assignTasks() {
         Iterator nodeIterator = activeSlaves.iterator();
         Node temp;
         Queue<Task> taskQueue;
@@ -123,17 +130,23 @@ public class JobTracker implements Serializable {
         }
     }
 
-    private void beginTasks() {
+    public void beginTasks() {
         for (Map.Entry<Integer, Queue<Task>> entry : allTasks.entrySet()) {
+            outstandingTaskCount++;
             ResourceManager.dispatchTask(entry.getValue().peek());
         }
     }
 
     public void markTaskComplete(Task task) {
+        Queue<Task> taskQueue;
         if (completedTasks.containsKey(task.getExecutorID())) {
             completedTasks.get(task.getExecutorID()).add(task);
             runningTasks.get(task.getExecutorID()).remove();
             runningTasks.put(task.getExecutorID(), runningTasks.get(task.getExecutorID()));
+        } else {
+            taskQueue =  new LinkedBlockingQueue<>();
+            taskQueue.add(task);
+            completedTasks.put(task.getExecutorID(), taskQueue);
         }
     }
 
@@ -155,6 +168,10 @@ public class JobTracker implements Serializable {
 
     public List<Task> getPendingTasks() {
         return pendingTasks;
+    }
+
+    public int getOutstandingTaskCount() {
+        return outstandingTaskCount;
     }
 
     public void collectTaskOutput(Task task) {
