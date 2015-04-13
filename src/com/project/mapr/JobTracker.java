@@ -47,12 +47,12 @@ public class JobTracker implements Serializable {
         beginTasks();
     }
 
-    private void connectToSlaves()  {
+    private void connectToSlaves() {
         List<Node> slaveNodes = new ArrayList<>();
-        while (true)    {
-            if(jobInput.getFileCount() <= ResourceManager.getIdleSlavePaths().size())    {
+        while (true) {
+            if (jobInput.getFileCount() <= ResourceManager.getIdleSlavePaths().size()) {
                 break;
-            } else if(ResourceManager.getIdleSlavePaths().size() == ResourceManager.getAllSlavePaths().size())  {
+            } else if (ResourceManager.getIdleSlavePaths().size() == ResourceManager.getAllSlavePaths().size()) {
                 break;
             } else {
                 try {
@@ -63,7 +63,7 @@ public class JobTracker implements Serializable {
             }
         }
 
-        for (String slavePath : ResourceManager.getIdleSlavePaths())    {
+        for (String slavePath : ResourceManager.getIdleSlavePaths()) {
             slaveNodes.add(ResourceManager.getNodeFrom(slavePath));
         }
         this.activeSlaves = slaveNodes;
@@ -76,14 +76,27 @@ public class JobTracker implements Serializable {
         pendingTasks.clear();
 
         for (File file : jobInput.getLocalFile().listFiles()) {
-            task = new Task();
-            task.setType(Task.Type.MAP);
-            task.setStatus(Task.Status.INITIALIZED);
-            task.setTaskID(count);
-            taskInput = new Input(FileSystem.copyFromLocalFile(file));
-            task.setTaskInput(taskInput);
-            pendingTasks.add(task);
-            count++;
+            if(file.isDirectory())  {
+                for(File subFile : file.listFiles())    {
+                    task = new Task();
+                    task.setType(Task.Type.MAP);
+                    task.setStatus(Task.Status.INITIALIZED);
+                    task.setTaskID(count);
+                    taskInput = new Input(FileSystem.copyFromLocalFile(subFile));
+                    task.setTaskInput(taskInput);
+                    pendingTasks.add(task);
+                    count++;
+                }
+            } else {
+                task = new Task();
+                task.setType(Task.Type.MAP);
+                task.setStatus(Task.Status.INITIALIZED);
+                task.setTaskID(count);
+                taskInput = new Input(FileSystem.copyFromLocalFile(file));
+                task.setTaskInput(taskInput);
+                pendingTasks.add(task);
+                count++;
+            }
         }
     }
 
@@ -98,14 +111,27 @@ public class JobTracker implements Serializable {
         completedTasks.clear();
         runningTasks.clear();
         for (File file : intermediateDir.listFiles()) {
-            task = new Task();
-            task.setType(Task.Type.REDUCE);
-            task.setStatus(Task.Status.INITIALIZED);
-            task.setTaskID(count);
-            taskInput = new Input(FileSystem.copyFromLocalFile(file));
-            task.setTaskInput(taskInput);
-            pendingTasks.add(task);
-            count++;
+            if(file.isDirectory())  {
+                for(File subFile : file.listFiles())    {
+                    task = new Task();
+                    task.setType(Task.Type.REDUCE);
+                    task.setStatus(Task.Status.INITIALIZED);
+                    task.setTaskID(count);
+                    taskInput = new Input(FileSystem.copyFromLocalFile(subFile));
+                    task.setTaskInput(taskInput);
+                    pendingTasks.add(task);
+                    count++;
+                }
+            } else {
+                task = new Task();
+                task.setType(Task.Type.REDUCE);
+                task.setStatus(Task.Status.INITIALIZED);
+                task.setTaskID(count);
+                taskInput = new Input(FileSystem.copyFromLocalFile(file));
+                task.setTaskInput(taskInput);
+                pendingTasks.add(task);
+                count++;
+            }
         }
     }
 
@@ -123,7 +149,7 @@ public class JobTracker implements Serializable {
             if (allTasks.containsKey(temp.getNodeID())) {
                 allTasks.get(temp.getNodeID()).add(task);
             } else {
-                taskQueue =  new LinkedBlockingQueue<>();
+                taskQueue = new LinkedBlockingQueue<>();
                 taskQueue.add(task);
                 allTasks.put(temp.getNodeID(), taskQueue);
             }
@@ -133,20 +159,35 @@ public class JobTracker implements Serializable {
     public void beginTasks() {
         for (Map.Entry<Integer, Queue<Task>> entry : allTasks.entrySet()) {
             outstandingTaskCount++;
-            ResourceManager.dispatchTask(entry.getValue().peek());
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+                if (entry.getValue().peek().getType() == Task.Type.MAP)
+                    ResourceManager.dispatchTask(entry.getValue().remove());
+                else if (entry.getValue().peek().getType() == Task.Type.REDUCE)
+                    ResourceManager.modifyTask(entry.getValue().remove());
+            }
         }
-    }
 
     public void markTaskComplete(Task task) {
         Queue<Task> taskQueue;
+
+        outstandingTaskCount--;
         if (completedTasks.containsKey(task.getExecutorID())) {
             completedTasks.get(task.getExecutorID()).add(task);
             runningTasks.get(task.getExecutorID()).remove();
             runningTasks.put(task.getExecutorID(), runningTasks.get(task.getExecutorID()));
         } else {
-            taskQueue =  new LinkedBlockingQueue<>();
+            taskQueue = new LinkedBlockingQueue<>();
             taskQueue.add(task);
             completedTasks.put(task.getExecutorID(), taskQueue);
+
+            if (allTasks.get(task.getExecutorID()).size() > 0) {
+                outstandingTaskCount++;
+                ResourceManager.modifyTask(allTasks.get(task.getExecutorID()).remove());
+            }
         }
     }
 
@@ -180,7 +221,7 @@ public class JobTracker implements Serializable {
         parseKeyValuePair(localFile, task.getType());
     }
 
-    private void parseKeyValuePair(File intermediateFile, Task.Type type) {
+    private synchronized void parseKeyValuePair(File intermediateFile, Task.Type type) {
         BufferedReader bufferedReader;
         StringTokenizer stringTokenizer;
         String temp, key, value;

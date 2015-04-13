@@ -24,17 +24,20 @@ public class TaskTracker implements OutputCollector, Serializable {
     private Mapper mapper;
     private Reducer reducer;
     private File intermediateFile;
+    private boolean newTask = true;
 
     public TaskTracker() {
         mapper = new WordCount();
         reducer = new WordCount();
-        intermediateFile = new File(MapRSession.getRootDir(), "intermediatefile");
     }
 
     public void runMap(Task task) {
         ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                 Node.Status.BUSY);
         File file = FileSystem.copyFromRemotePath(task.getTaskInput().getRemoteDataPath());
+        intermediateFile = new File(MapRSession.getRootDir(), task.getType() + "_"
+                + task.getExecutorID() + "_" + task.getTaskID());
+        newTask = true;
         mapper.map(file, this);
         finishTask(task);
     }
@@ -45,6 +48,9 @@ public class TaskTracker implements OutputCollector, Serializable {
         File file = FileSystem.copyFromRemotePath(task.getTaskInput().getRemoteDataPath());
         List<Integer> values = new ArrayList<>();
         String temp;
+        intermediateFile = new File(MapRSession.getRootDir(), task.getType() + "_"
+                + task.getExecutorID() + "_" + task.getTaskID());
+        newTask = true;
         try {
             BufferedReader bufferedReader = new BufferedReader(new FileReader(file));
             while((temp = bufferedReader.readLine()) != null)   {
@@ -60,10 +66,11 @@ public class TaskTracker implements OutputCollector, Serializable {
     @Override
     public void collect(Pair<String, Integer> keyValuePair) {
         try {
-            PrintWriter printWriter = new PrintWriter(new FileWriter(intermediateFile, true));
+            PrintWriter printWriter = new PrintWriter(new FileWriter(intermediateFile, !newTask));
             printWriter.println(keyValuePair.getKey() + ":" + keyValuePair.getValue());
             printWriter.flush();
             printWriter.close();
+            newTask = false;
         } catch (IOException e) {
             e.printStackTrace();
         }

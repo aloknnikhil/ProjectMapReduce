@@ -32,6 +32,7 @@ public class Node implements Serializable {
     private JobTracker jobTracker;
     private TaskTracker taskTracker;
     private TaskWatcher taskWatcher;
+    private boolean isMapPhase = true;
 
     public Node(Type type, int nodeID) {
         this.type = type;
@@ -121,7 +122,6 @@ public class Node implements Serializable {
                             switch (task.getStatus()) {
                                 case RUNNING:
                                     //TODO Check if the task running time exceeded the timeout period
-                                    ResourceManager.setWatcherOn(event.getPath(), Node.this);
                                     break;
 
                                 case COMPLETE:
@@ -130,10 +130,11 @@ public class Node implements Serializable {
                                     System.out.println("Number of tasks completed: "
                                             + jobTracker.getCompletedTasks().size() + " Number of outstanding tasks: "
                                             + jobTracker.getOutstandingTaskCount());
-                                    if(jobTracker.getOutstandingTaskCount() == jobTracker.getCompletedTasks().size())   {
+                                    if(jobTracker.getOutstandingTaskCount() == 0 && isMapPhase)   {
                                         jobTracker.initializeReduceTasks();
                                         jobTracker.assignTasks();
                                         jobTracker.beginTasks();
+                                        isMapPhase = false;
                                     }
                             }
                             break;
@@ -142,6 +143,7 @@ public class Node implements Serializable {
 
                 case SLAVE:
                     switch (event.getType()) {
+                        case NodeDataChanged:
                         case NodeCreated:
                             final Task task = ResourceManager.getActiveTaskFor(event.getPath());
                             switch (task.getStatus()) {
@@ -171,6 +173,7 @@ public class Node implements Serializable {
                     }
                     break;
             }
+            ResourceManager.setWatcherOn(event.getPath(), Node.this);
         }
     }
 }

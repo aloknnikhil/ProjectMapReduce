@@ -71,7 +71,7 @@ public class FileSystem {
     }
 
     public static File copyFromRemotePath(String remoteDataPath) {
-        File remoteFile = new File(MapRSession.getRootDir(), "remote");
+        File remoteFile = new File(MapRSession.getRootDir(), remoteDataPath.substring(remoteDataPath.lastIndexOf("/") + 1));
         try {
             FileOutputStream outputStream = new FileOutputStream(remoteFile);
             ChunkedStorage.newReader(getInstance().chunkedStorageProvider, remoteDataPath, outputStream)
