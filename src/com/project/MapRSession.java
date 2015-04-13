@@ -22,7 +22,7 @@ public class MapRSession {
     private Node activeNode;
     private int nodeID;
     private String zookeeperHost = "ece-acis-dc282.acis.ufl.edu:1499";
-    private String cassandraHost = "ece-acis-dc282.acis.ufl.edu";
+    private String cassandraHost = "ece-acis-dc282.acis.ufl.edu:9160";
     public static boolean flag = false;
 
     public static void main(String[] args) {

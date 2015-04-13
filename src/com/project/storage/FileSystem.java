@@ -86,8 +86,9 @@ public class FileSystem {
     }
 
     private void connectToBackStore() {
+
         context = new AstyanaxContext.Builder()
-                .forCluster("Test Cluster")
+                .forCluster("Thrust Cluster")
                 .forKeyspace("BirdCount")
                 .withAstyanaxConfiguration(new AstyanaxConfigurationImpl()
                         .setDiscoveryType(NodeDiscoveryType.RING_DESCRIBE)
@@ -96,6 +97,7 @@ public class FileSystem {
                 .withConnectionPoolConfiguration(new ConnectionPoolConfigurationImpl("MapRConnectionPool")
                         .setPort(9160)
                         .setMaxConnsPerHost(1)
+                        .setConnectTimeout(10000)
                         .setSeeds(MapRSession.getInstance().getCassandraHost()))
                 .withConnectionPoolMonitor(new CountingConnectionPoolMonitor())
                 .buildKeyspace(ThriftFamilyFactory.getInstance());

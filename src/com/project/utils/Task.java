@@ -1,11 +1,14 @@
 package com.project.utils;
 
+import kafka.serializer.Decoder;
+import kafka.serializer.Encoder;
+
 import java.io.*;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
  */
-public class Task implements Serializable {
+public class Task implements Serializable, Encoder<Task>, Decoder<Task> {
 
     public enum Type   {
         MAP,
@@ -74,16 +77,14 @@ public class Task implements Serializable {
         this.status = status;
     }
 
-    public static byte[] serialize(Task task) {
-        ByteArrayOutputStream b = new ByteArrayOutputStream();
-        ObjectOutputStream o;
-        try {
-            o = new ObjectOutputStream(b);
-            o.writeObject(task);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return b.toByteArray();
+    @Override
+    public Task fromBytes(byte[] bytes) {
+        return deserialize(bytes);
+    }
+
+    @Override
+    public byte[] toBytes(Task task) {
+        return serialize(task);
     }
 
     public static Task deserialize(byte[] bytes) {
@@ -96,6 +97,18 @@ public class Task implements Serializable {
             e.printStackTrace();
             return null;
         }
+    }
+
+    public static byte[] serialize(Task task) {
+        ByteArrayOutputStream b = new ByteArrayOutputStream();
+        ObjectOutputStream o;
+        try {
+            o = new ObjectOutputStream(b);
+            o.writeObject(task);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return b.toByteArray();
     }
 
     @Override

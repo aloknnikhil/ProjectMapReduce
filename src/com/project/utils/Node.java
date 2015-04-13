@@ -5,6 +5,7 @@ import com.project.ResourceManager;
 import com.project.mapr.JobTracker;
 import com.project.mapr.TaskTracker;
 import com.project.storage.FileSystem;
+import org.I0Itec.zkclient.IZkDataListener;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 
@@ -13,7 +14,7 @@ import java.io.*;
 /**
  * Created by alok on 4/11/15
  */
-public class Node implements Serializable {
+public class Node implements Serializable, IZkDataListener {
 
     public enum Type {
         MASTER,
@@ -31,7 +32,6 @@ public class Node implements Serializable {
     private int nodeID;
     private JobTracker jobTracker;
     private TaskTracker taskTracker;
-    private TaskWatcher taskWatcher;
 
     public Node(Type type, int nodeID) {
         this.type = type;
@@ -40,7 +40,6 @@ public class Node implements Serializable {
             jobTracker = new JobTracker(MapRSession.getInstance().getInput());
 
         taskTracker = new TaskTracker();
-        taskWatcher = new TaskWatcher();
     }
 
     public void startNode() {
@@ -82,9 +81,9 @@ public class Node implements Serializable {
             node = (Node) o.readObject();
             o.close();
             return node;
-        } catch (EOFException e)    {
+        } catch (EOFException e) {
             return null;
-        }catch (IOException | ClassNotFoundException e) {
+        } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
             return null;
         }
@@ -98,82 +97,63 @@ public class Node implements Serializable {
         return type;
     }
 
-    public JobTracker getJobTracker() {
-        return jobTracker;
-    }
+    @Override
+    public void handleDataChange(String path, Object data) throws Exception {
+        System.out.println("Got a change event!");
+        switch (Node.this.getType()) {
+            case MASTER:
+                final Task taskMaster = Task.deserialize((byte[]) data);
+                switch (taskMaster.getStatus()) {
+                    case RUNNING:
+                        //TODO Check if the task running time exceeded the timeout period
+                        break;
 
-    public TaskTracker getTaskTracker() {
-        return taskTracker;
-    }
-
-    public TaskWatcher getTaskWatcher() {
-        return taskWatcher;
-    }
-
-    public class TaskWatcher implements Watcher, Serializable {
-
-        @Override
-        public void process(WatchedEvent event) {
-
-            switch (Node.this.getType()) {
-                case MASTER:
-                    switch (event.getType()) {
-                        case NodeDataChanged:
-                            final Task task = ResourceManager.getActiveTaskFor(event.getPath());
-                            switch (task.getStatus()) {
-                                case RUNNING:
-                                    //TODO Check if the task running time exceeded the timeout period
-                                    break;
-
-                                case COMPLETE:
-                                    new Thread(new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            jobTracker.collectTaskOutput(task);
-                                            jobTracker.markTaskComplete(task);
-                                            System.out.println("Number of tasks completed: "
-                                                    + jobTracker.getCompletedTasks().size() + " Number of outstanding tasks: "
-                                                    + jobTracker.getOutstandingTaskCount());
-                                        }
-                                    }).start();
+                    case COMPLETE:
+                        new Thread(new Runnable() {
+                            @Override
+                            public void run() {
+                                jobTracker.collectTaskOutput(taskMaster);
+                                jobTracker.markTaskComplete(taskMaster);
+                                System.out.println("Number of tasks completed: "
+                                        + jobTracker.getCompletedTasks().size() + " Number of outstanding tasks: "
+                                        + jobTracker.getOutstandingTaskCount());
                             }
-                            break;
-                    }
-                    break;
+                        }).start();
+                        break;
+                }
+                break;
 
-                case SLAVE:
-                    switch (event.getType()) {
-                        case NodeDataChanged:
-                        case NodeCreated:
-                            final Task task = ResourceManager.getActiveTaskFor(event.getPath());
-                            switch (task.getStatus()) {
-                                case INITIALIZED:
-                                    if (task.getType() == Task.Type.MAP) {
-                                        task.setStatus(Task.Status.RUNNING);
-                                        ResourceManager.modifyTask(task);
-                                        new Thread(new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                taskTracker.runMap(task);
-                                            }
-                                        }).start();
-                                    } else if(task.getType() == Task.Type.REDUCE)   {
-                                        task.setStatus(Task.Status.RUNNING);
-                                        ResourceManager.modifyTask(task);
-                                        new Thread(new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                taskTracker.runReduce(task);
-                                            }
-                                        }).start();
-                                    }
-                                    break;
-                            }
-                            break;
-                    }
-                    break;
-            }
-            ResourceManager.setWatcherOn(event.getPath(), Node.this);
+            case SLAVE:
+                final Task taskSlave = Task.deserialize((byte[]) data);
+                switch (taskSlave.getStatus()) {
+                    case INITIALIZED:
+                        if (taskSlave.getType() == Task.Type.MAP) {
+                            taskSlave.setStatus(Task.Status.RUNNING);
+                            ResourceManager.modifyTask(taskSlave);
+                            new Thread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    taskTracker.runMap(taskSlave);
+                                }
+                            }).start();
+                        } else if (taskSlave.getType() == Task.Type.REDUCE) {
+                            taskSlave.setStatus(Task.Status.RUNNING);
+                            ResourceManager.modifyTask(taskSlave);
+                            new Thread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    taskTracker.runReduce(taskSlave);
+                                }
+                            }).start();
+                        }
+                        break;
+                }
+
         }
+    }
+
+    @Override
+    public void handleDataDeleted(String s) throws Exception {
+
     }
 }
