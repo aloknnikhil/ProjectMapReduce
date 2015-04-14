@@ -36,9 +36,9 @@ public class MapRSession {
     }
 
     private void configureSession() {
-        sessionDir = new File("session" + nodeID + "_" + System.currentTimeMillis());
+        sessionDir = new File("out/session" + nodeID + "_" + System.currentTimeMillis());
         sessionDir.mkdir();
-        input = new Input(new File("input"));
+        input = new Input(new File("out/input"));
     }
 
     private void configureActiveNode() {

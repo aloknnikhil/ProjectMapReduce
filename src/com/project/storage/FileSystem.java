@@ -18,10 +18,9 @@ import com.netflix.astyanax.thrift.ThriftFamilyFactory;
 import com.project.MapRSession;
 import com.project.utils.LogFile;
 import com.project.utils.Node;
+import org.apache.commons.io.IOUtils;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
+import java.io.*;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
@@ -54,9 +53,10 @@ public class FileSystem {
 
     public static String copyFromLocalFile(File localFile) {
         try {
+            ByteArrayInputStream in = new ByteArrayInputStream(IOUtils.toByteArray(new FileInputStream(localFile)));
             ChunkedStorage.newWriter(getInstance().chunkedStorageProvider,
-                    localFile.getAbsolutePath(), new FileInputStream(localFile))
-                    .withChunkSize(100)
+                    localFile.getAbsolutePath(), in)
+                    .withChunkSize(16384)
                     .call();
         } catch (Exception e) {
             e.printStackTrace();

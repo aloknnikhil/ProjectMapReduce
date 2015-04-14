@@ -69,14 +69,18 @@ public class SocketTaskHandler {
         new Thread(dispatcherRunnable).start();
     }
 
-    public static void dispatchTask(Task task) {
-        ObjectOutputStream nodeSocket;
-
-        if(MapRSession.getInstance().getActiveNode().getType() == Node.Type.MASTER)
-            nodeSocket = getInstance().connectedSlaves.get(task.getExecutorID());
-        else
-            nodeSocket = getInstance().masterSocket;
-        writeTaskToSocket(nodeSocket, task);
+    public static void dispatchTask(final Task task) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                ObjectOutputStream nodeSocket;
+                if(MapRSession.getInstance().getActiveNode().getType() == Node.Type.MASTER)
+                    nodeSocket = getInstance().connectedSlaves.get(task.getExecutorID());
+                else
+                    nodeSocket = getInstance().masterSocket;
+                writeTaskToSocket(nodeSocket, task);
+            }
+        }).start();
     }
 
     public static void modifyTask(Task task) {

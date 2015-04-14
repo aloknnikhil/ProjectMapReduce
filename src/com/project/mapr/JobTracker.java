@@ -27,7 +27,7 @@ public class JobTracker implements Serializable {
     private int outstandingTaskCount = 0;
     private boolean isMapPhase = true;
 
-    private File intermediateDir = new File("intermediate");
+    private File intermediateDir = new File("out/intermediate");
 
     public JobTracker(Input inputFile) {
         completedTasks = new HashMap<>();
