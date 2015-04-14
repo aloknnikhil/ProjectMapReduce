@@ -155,9 +155,7 @@ public class SocketTaskHandler {
                     Thread.sleep(5000);
                     if (getInstance().pendingHeartBeats.get(slaveID) > MAX_RETRY_COUNT) {
                         getInstance().offlineSlaves.add(slaveID);
-                        MapRSession.getInstance().getActiveNode().getJobTracker()
-                                .scheduleTasks(MapRSession.getInstance().getActiveNode()
-                                        .getJobTracker().getPendingTasks().get(slaveID));
+                        MapRSession.getInstance().getActiveNode().getJobTracker().rescheduleTasksFrom(slaveID);
                         Thread.currentThread().interrupt();
                     }
 

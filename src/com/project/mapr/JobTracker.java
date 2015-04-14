@@ -45,7 +45,7 @@ public class JobTracker implements Serializable {
         SocketTaskHandler.getInstance().connectToSlaves();
         initializeMapTasks();
         System.out.println("Pending Tasks: " + allTasks.size());
-        scheduleTasks(allTasks);
+        assignTasks();
         beginTasks();
     }
 
@@ -122,14 +122,14 @@ public class JobTracker implements Serializable {
         }
     }
 
-    public void scheduleTasks(Collection<Task> taskList)  {
+    public void assignTasks() {
         Iterator nodeIterator = activeSlaves.iterator();
         Node temp = null;
         Queue<Task> taskQueue;
         boolean allSlavesDead = false;
         int count = 0;
 
-        for (Task pendingTask : taskList) {
+        for (Task pendingTask : allTasks) {
             do {
                 if(allSlavesDead) {
                     System.out.println("All slaves offline! :o");
@@ -164,6 +164,57 @@ public class JobTracker implements Serializable {
                 }
             }
         }
+    }
+
+    public void rescheduleTasksFrom(Integer slaveID) {
+        System.out.println("Started rescheduling slave " + slaveID + "'s tasks");
+        Iterator nodeIterator = activeSlaves.iterator();
+        Node temp = null;
+        Queue<Task> taskQueue;
+        boolean allSlavesDead = false;
+        int count = 0;
+
+        outstandingTaskCount--;
+        if(currentTaskFor.containsKey(slaveID)) {
+            pendingTasks.get(slaveID).add(currentTaskFor.get(slaveID));
+        }
+
+        for (Task pendingTask : pendingTasks.get(slaveID)) {
+            do {
+                if(allSlavesDead) {
+                    System.out.println("All slaves offline! :o");
+                    return;
+                }
+
+                if(nodeIterator.hasNext())  {
+                    temp = (Node) nodeIterator.next();
+                } else {
+                    nodeIterator = activeSlaves.iterator();
+                    count++;
+                }
+
+                if(count == 2) {
+                    allSlavesDead = true;
+                }
+            } while(SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID()));
+
+            allSlavesDead = false;
+            count = 0;
+
+            synchronized (pendingTasks) {
+                if (!SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID())) {
+                    pendingTask.setExecutorID(temp.getNodeID());
+                    if (pendingTasks.containsKey(temp.getNodeID())) {
+                        pendingTasks.get(temp.getNodeID()).add(pendingTask);
+                    } else {
+                        taskQueue = new LinkedBlockingQueue<>();
+                        taskQueue.add(pendingTask);
+                        pendingTasks.put(temp.getNodeID(), taskQueue);
+                    }
+                }
+            }
+        }
+        System.out.println("Finished rescheduling slave " + slaveID + "'s tasks");
     }
 
     public void beginTasks() {
@@ -201,7 +252,7 @@ public class JobTracker implements Serializable {
         if (getOutstandingTaskCount() == 0 && isMapPhase) {
             isMapPhase = false;
             initializeReduceTasks();
-            scheduleTasks(allTasks);
+            assignTasks();
             beginTasks();
         }
     }
