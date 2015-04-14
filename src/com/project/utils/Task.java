@@ -1,5 +1,6 @@
 package com.project.utils;
 
+import com.project.storage.*;
 import kafka.serializer.Decoder;
 import kafka.serializer.Encoder;
 
@@ -28,10 +29,6 @@ public class Task implements Serializable, Encoder<Task>, Decoder<Task> {
     private Output taskOutput;
     private Type type;
     private Status status;
-
-    public Task()   {
-
-    }
 
     public int getTaskID() {
         return taskID;
@@ -79,6 +76,17 @@ public class Task implements Serializable, Encoder<Task>, Decoder<Task> {
 
     public void setStatus(Status status) {
         this.status = status;
+    }
+
+    public static Task toRemoteInput(Task task)  {
+        if(task.getTaskInput().getType() == Input.Type.LOCAL) {
+            Input input = task.getTaskInput();
+            input.setType(Input.Type.REMOTE);
+            input.setRemoteDataPath(FileSystem.copyFromLocalFile(input.getLocalFile()));
+            input.setLocalFile(null);
+            task.setTaskInput(input);
+        }
+        return task;
     }
 
     @Override

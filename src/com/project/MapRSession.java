@@ -4,12 +4,10 @@ import com.project.mapr.JobTracker;
 import com.project.utils.Input;
 import com.project.utils.Node;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.StringTokenizer;
 
 /**
  * Created by Alok on 4/11/15 in ProjectMapReduce
@@ -47,30 +45,34 @@ public class MapRSession {
         File masterConfig = new File("master");
         File slaveConfig = new File("slaves");
         BufferedReader configReader;
-        List<Integer> slaveIDs = new ArrayList<>();
         String temp;
-        if (masterConfig.exists()) {
-            try {
+        StringTokenizer stringTokenizer;
+        try {
+            if (masterConfig.exists()) {
                 configReader = new BufferedReader(new FileReader(masterConfig));
                 if ((temp = configReader.readLine()) != null) {
+                    temp = new StringTokenizer(temp, " ").nextToken();
                     if (temp.equals(nodeID + "")) {
                         activeNode = new Node(Node.Type.MASTER, nodeID);
-                        if (slaveConfig.exists()) {
-                            configReader = new BufferedReader(new FileReader(slaveConfig));
-                            while ((temp = configReader.readLine()) != null) {
-                                slaveIDs.add(Integer.valueOf(temp));
-                            }
-                            ResourceManager.configureResourceManager(slaveIDs);
-                        }
                     } else {
                         activeNode = new Node(Node.Type.SLAVE, nodeID);
                     }
                 }
-            } catch (java.io.IOException e) {
-                e.printStackTrace();
             }
-        } else {
-            activeNode = new Node(Node.Type.SLAVE, nodeID);
+
+            if (slaveConfig.exists()) {
+                configReader = new BufferedReader(new FileReader(slaveConfig));
+                while ((temp = configReader.readLine()) != null) {
+                    stringTokenizer = new StringTokenizer(temp, " ");
+                    ResourceManager.slaveAddresses.put(Integer.valueOf(stringTokenizer.nextToken()),
+                            stringTokenizer.nextToken());
+                }
+
+                if(activeNode.getType() == Node.Type.MASTER)
+                    ResourceManager.configureResourceManager(ResourceManager.slaveAddresses);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
         activeNode.startNode();
     }

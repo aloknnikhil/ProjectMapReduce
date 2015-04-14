@@ -29,7 +29,6 @@ import java.io.FileOutputStream;
 public class FileSystem {
 
     private static FileSystem fileSystemInstance;
-    private Node masterNode;
     private AstyanaxContext<Keyspace> context;
     private Keyspace keyspace;
     private CassandraChunkedStorageProvider chunkedStorageProvider;
@@ -42,11 +41,6 @@ public class FileSystem {
 
     private void configureFileSystem() {
         connectToBackStore();
-    }
-
-    public static void setFileSystemManager(Node masterNode) {
-
-        getInstance().masterNode = masterNode;
     }
 
     private static FileSystem getInstance() {

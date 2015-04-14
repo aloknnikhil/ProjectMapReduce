@@ -33,11 +33,15 @@ public class Input implements Serializable {
 
     public static int countFiles(File directory) {
         int count = 0;
-        for(File file : directory.listFiles()) {
-            if(file.isDirectory()) {
-                count += countFiles(file);
+        if(directory.isDirectory()) {
+            for (File file : directory.listFiles()) {
+                if (file.isDirectory()) {
+                    count += countFiles(file);
+                }
+                count++;
             }
-            count++;
+        } else {
+            count = 1;
         }
         return count;
     }
@@ -56,5 +60,17 @@ public class Input implements Serializable {
 
     public String getRemoteDataPath() {
         return remoteDataPath;
+    }
+
+    public void setType(Type type) {
+        this.type = type;
+    }
+
+    public void setRemoteDataPath(String remoteDataPath) {
+        this.remoteDataPath = remoteDataPath;
+    }
+
+    public void setLocalFile(File localFile) {
+        this.localFile = localFile;
     }
 }

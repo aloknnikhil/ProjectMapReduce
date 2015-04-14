@@ -6,7 +6,10 @@ import com.project.utils.Node;
 import org.I0Itec.zkclient.ZkClient;
 import org.apache.zookeeper.*;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
@@ -16,11 +19,11 @@ public class ResourceManager {
     private ZkClient zkClient;
     private static final int SESSION_TIMEOUT = 65000;
     private static ResourceManager resourceManagerInstance;
+    public static HashMap<Integer, String> slaveAddresses = new HashMap<>();
 
     public final static String APPLICATION_ROOT_PATH = "/mapr";
     public final static String SLAVES_ROOT_PATH = "/slaves";
     public final static String MASTER_ROOT_PATH = "/masters";
-    public final static String TASKS_ROOT_PATH = "/tasks";
 
     public final static String IDLE_SLAVES_PATH = "/idle";
     public final static String BUSY_SLAVES_PATH = "/busy";
@@ -35,15 +38,12 @@ public class ResourceManager {
         LogFile.writeToLog("Connected to Zookeeper Configuration Manager");
     }
 
-    public static void configureResourceManager(List<Integer> slaveIDs) {
+    public static void configureResourceManager(HashMap<Integer, String> slaveIDs) {
 
         createZNode(APPLICATION_ROOT_PATH, "MapReduceRoot".getBytes(),
                 CreateMode.PERSISTENT);
 
         createZNode(APPLICATION_ROOT_PATH + MASTER_ROOT_PATH, "MastersRoot".getBytes(),
-                CreateMode.PERSISTENT);
-
-        createZNode(APPLICATION_ROOT_PATH + TASKS_ROOT_PATH, "TasksRoot".getBytes(),
                 CreateMode.PERSISTENT);
 
         createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH, "SlavesRoot".getBytes(),
@@ -58,9 +58,9 @@ public class ResourceManager {
         createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + ALL_SLAVES_PATH,
                 "AllSlaves".getBytes(), CreateMode.PERSISTENT);
 
-        for (Integer slaveID : slaveIDs) {
-            createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + ALL_SLAVES_PATH + "/" + slaveID,
-                    ("Slave" + slaveID).getBytes(), CreateMode.PERSISTENT);
+        for (Map.Entry<Integer, String> entry : slaveIDs.entrySet()) {
+            createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + ALL_SLAVES_PATH + "/" + entry.getKey(),
+                    ("Slave" + entry.getKey()).getBytes(), CreateMode.PERSISTENT);
         }
     }
 
@@ -106,7 +106,7 @@ public class ResourceManager {
             case SLAVE:
                 createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + IDLE_SLAVES_PATH + "/" + node.getNodeID(),
                         Node.serialize(node), CreateMode.EPHEMERAL);
-                TaskHandler.subscribeTo("" + node.getNodeID(), node);
+                SocketTaskHandler.getInstance().setupSocketListener();
                 break;
         }
     }

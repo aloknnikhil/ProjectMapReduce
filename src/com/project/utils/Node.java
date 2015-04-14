@@ -2,6 +2,7 @@ package com.project.utils;
 
 import com.project.MapRSession;
 import com.project.ResourceManager;
+import com.project.SocketTaskHandler;
 import com.project.TaskHandler;
 import com.project.mapr.JobTracker;
 import com.project.mapr.TaskTracker;
@@ -29,6 +30,7 @@ public class Node implements Serializable, IZkDataListener, TaskChangeListener {
 
     private Type type;
     private int nodeID;
+
     private JobTracker jobTracker;
     private TaskTracker taskTracker;
 
@@ -46,8 +48,6 @@ public class Node implements Serializable, IZkDataListener, TaskChangeListener {
         //If the com.alok.utils.Node is a master node, then we need additional setup procedures
         if (type == Type.MASTER) {
             jobTracker.start();
-            TaskHandler.getInstance().subscribeToSlaves();
-            FileSystem.setFileSystemManager(this);
         }
         ResourceManager.registerNode(this);
 
@@ -97,6 +97,14 @@ public class Node implements Serializable, IZkDataListener, TaskChangeListener {
         return type;
     }
 
+    public JobTracker getJobTracker() {
+        return jobTracker;
+    }
+
+    public TaskTracker getTaskTracker() {
+        return taskTracker;
+    }
+
     @Override
     public void handleDataChange(String path, Object data) throws Exception {
 
@@ -109,53 +117,6 @@ public class Node implements Serializable, IZkDataListener, TaskChangeListener {
 
     @Override
     public void onTaskChanged(final Task task) {
-        switch (Node.this.getType()) {
-            case MASTER:
-                switch (task.getStatus()) {
-                    case RUNNING:
-                        //TODO Check if the task running time exceeded the timeout period
-                        break;
 
-                    case COMPLETE:
-                        new Thread(new Runnable() {
-                            @Override
-                            public void run() {
-                                jobTracker.collectTaskOutput(task);
-                                jobTracker.markTaskComplete(task);
-                                System.out.println("Number of tasks completed: "
-                                        + jobTracker.getCompletedTasks().size() + " Number of outstanding tasks: "
-                                        + jobTracker.getOutstandingTaskCount());
-                            }
-                        }).start();
-                        break;
-                }
-                break;
-
-            case SLAVE:
-                switch (task.getStatus()) {
-                    case INITIALIZED:
-                        if (task.getType() == Task.Type.MAP) {
-                            task.setStatus(Task.Status.RUNNING);
-                            TaskHandler.modifyTask(task);
-                            new Thread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    taskTracker.runMap(task);
-                                }
-                            }).start();
-                        } else if (task.getType() == Task.Type.REDUCE) {
-                            task.setStatus(Task.Status.RUNNING);
-                            TaskHandler.modifyTask(task);
-                            new Thread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    taskTracker.runReduce(task);
-                                }
-                            }).start();
-                        }
-                        break;
-                }
-
-        }
     }
 }
