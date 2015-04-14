@@ -13,7 +13,8 @@ public class Task implements Serializable, Encoder<Task>, Decoder<Task> {
 
     public enum Type   {
         MAP,
-        COMBINE,
+        HEARTBEAT,
+        ACK,
         REDUCE
     }
 
@@ -78,7 +79,7 @@ public class Task implements Serializable, Encoder<Task>, Decoder<Task> {
         this.status = status;
     }
 
-    public static Task toRemoteInput(Task task)  {
+    public static Task convertToRemoteInput(Task task)  {
         if(task.getTaskInput().getType() == Input.Type.LOCAL) {
             Input input = task.getTaskInput();
             input.setType(Input.Type.REMOTE);

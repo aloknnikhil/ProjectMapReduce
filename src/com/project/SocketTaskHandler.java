@@ -6,9 +6,7 @@ import com.project.utils.Task;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.StringTokenizer;
+import java.util.*;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
@@ -17,11 +15,16 @@ public class SocketTaskHandler {
 
     private static SocketTaskHandler resourceManagerInstance;
     private HashMap<Integer, ObjectOutputStream> connectedSlaves;
+    private HashMap<Integer, Integer> pendingHeartBeats;
+    private static final int MAX_RETRY_COUNT = 3;
+    public List<Integer> offlineSlaves;
     private ObjectOutputStream masterSocket;
     private Runnable dispatcherRunnable;
 
     private SocketTaskHandler() {
         connectedSlaves = new HashMap<>();
+        offlineSlaves = new ArrayList<>();
+        pendingHeartBeats = new HashMap<>();
     }
 
     public void connectToSlaves() {
@@ -115,15 +118,63 @@ public class SocketTaskHandler {
                 e.printStackTrace();
             }
         } while (redo);
+        getInstance().pendingHeartBeats.put(slaveID, 0);
+        startHeartBeat(slaveID);
     }
 
-    public static void writeTaskToSocket(ObjectOutputStream socket, Task task) {
+    private static void startHeartBeat(Integer slaveID)    {
+        new Thread(new HeartBeatRunnable(slaveID)).start();
+    }
+
+    public static boolean writeTaskToSocket(ObjectOutputStream socket, Task task) {
 
         try {
             socket.writeUnshared(task);
             socket.flush();
+            return true;
         } catch (IOException e) {
-            e.printStackTrace();
+            return false;
+        }
+    }
+
+    private static class HeartBeatRunnable implements Runnable  {
+
+        Integer slaveID;
+
+        private HeartBeatRunnable(Integer slaveID)  {
+            this.slaveID = slaveID;
+        }
+
+        @Override
+        public void run() {
+
+            Task task;
+
+            try {
+                while (true) {
+                    Thread.sleep(5000);
+                    if (getInstance().pendingHeartBeats.get(slaveID) > MAX_RETRY_COUNT) {
+                        getInstance().offlineSlaves.add(slaveID);
+                        MapRSession.getInstance().getActiveNode().getJobTracker()
+                                .scheduleTasks(MapRSession.getInstance().getActiveNode()
+                                        .getJobTracker().getPendingTasks().get(slaveID));
+                        Thread.currentThread().interrupt();
+                    }
+
+                    task = new Task();
+                    task.setType(Task.Type.HEARTBEAT);
+                    task.setStatus(Task.Status.INITIALIZED);
+                    task.setExecutorID(slaveID);
+                    getInstance().pendingHeartBeats.put(slaveID, getInstance().pendingHeartBeats.get(slaveID) + 1);
+                    if(writeTaskToSocket(getInstance().connectedSlaves.get(slaveID), task))
+                        System.out.println("Beat for " + slaveID);
+                    else    {
+                        getInstance().pendingHeartBeats.put(slaveID, MAX_RETRY_COUNT + 1);
+                    }
+                }
+            } catch (InterruptedException e) {
+                System.out.println("Slave " + slaveID + " has died :(");
+            }
         }
     }
 
@@ -148,15 +199,19 @@ public class SocketTaskHandler {
                     task = (Task) objectInputStream.readUnshared();
                     switch (MapRSession.getInstance().getActiveNode().getType()) {
                         case MASTER:
-                            switch (task.getStatus()) {
-                                case RUNNING:
-                                    //TODO Check if the task running time exceeded the timeout period
-                                    break;
+                            if(task.getType() == Task.Type.ACK) {
+                                getInstance().pendingHeartBeats.put(task.getExecutorID(), 0);
+                            } else {
+                                switch (task.getStatus()) {
+                                    case RUNNING:
+                                        //TODO Check if the task running time exceeded the timeout period
+                                        break;
 
-                                case COMPLETE:
-                                    MapRSession.getInstance().getActiveNode().getJobTracker().collectTaskOutput(task);
-                                    MapRSession.getInstance().getActiveNode().getJobTracker().markTaskComplete(task);
-                                    break;
+                                    case COMPLETE:
+                                        MapRSession.getInstance().getActiveNode().getJobTracker().collectTaskOutput(task);
+                                        MapRSession.getInstance().getActiveNode().getJobTracker().markTaskComplete(task);
+                                        break;
+                                }
                             }
                             break;
 
@@ -181,15 +236,16 @@ public class SocketTaskHandler {
                                                 MapRSession.getInstance().getActiveNode().getTaskTracker().runReduce(task);
                                             }
                                         }).start();
+                                    } else if (task.getType() == Task.Type.HEARTBEAT)   {
+                                        task.setType(Task.Type.ACK);
+                                        modifyTask(task);
                                     }
                                     break;
                             }
-
                     }
                 }
             } catch (IOException e) {
-                System.out.println("Error! Something went wrong. Please restart the process");
-                e.printStackTrace();
+                System.out.println("A slave has failed to communicate");
             } catch (ClassNotFoundException e) {
                 e.printStackTrace();
             }
