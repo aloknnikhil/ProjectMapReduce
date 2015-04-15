@@ -205,13 +205,14 @@ public class SocketTaskHandler {
                                 getInstance().pendingHeartBeats.put(task.getExecutorID(), 0);
                             } else {
                                 switch (task.getStatus()) {
-                                    case RUNNING:
-                                        //TODO Check if the task running time exceeded the timeout period
-                                        break;
-
                                     case COMPLETE:
-                                        MapRSession.getInstance().getActiveNode().getJobTracker().collectTaskOutput(task);
-                                        MapRSession.getInstance().getActiveNode().getJobTracker().markTaskComplete(task);
+                                        new Thread(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                MapRSession.getInstance().getActiveNode().getJobTracker().collectTaskOutput(task);
+                                                MapRSession.getInstance().getActiveNode().getJobTracker().markTaskComplete(task);
+                                            }
+                                        }).start();
                                         break;
                                 }
                             }

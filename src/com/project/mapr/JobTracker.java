@@ -27,6 +27,8 @@ public class JobTracker implements Serializable {
     private int outstandingTaskCount = 0;
     private boolean isMapPhase = true;
 
+    private HashMap<String, Integer> reduceKeys = new HashMap<>();
+
     private File intermediateDir = new File("out/intermediate");
 
     public JobTracker(Input inputFile) {
@@ -71,7 +73,7 @@ public class JobTracker implements Serializable {
                     task.setStatus(Task.Status.INITIALIZED);
                     task.setTaskID(count);
                     taskInput = new Input(subFile);
-                    task.setTaskInput(taskInput);
+                    task.addTaskInput(taskInput);
                     allTasks.add(task);
                     count++;
                 }
@@ -81,7 +83,7 @@ public class JobTracker implements Serializable {
                 task.setStatus(Task.Status.INITIALIZED);
                 task.setTaskID(count);
                 taskInput = new Input(file);
-                task.setTaskInput(taskInput);
+                task.addTaskInput(taskInput);
                 allTasks.add(task);
                 count++;
             }
@@ -105,7 +107,7 @@ public class JobTracker implements Serializable {
                     task.setStatus(Task.Status.INITIALIZED);
                     task.setTaskID(count);
                     taskInput = new Input(subFile);
-                    task.setTaskInput(taskInput);
+                    task.addTaskInput(taskInput);
                     allTasks.add(task);
                     count++;
                 }
@@ -115,7 +117,7 @@ public class JobTracker implements Serializable {
                 task.setStatus(Task.Status.INITIALIZED);
                 task.setTaskID(count);
                 taskInput = new Input(file);
-                task.setTaskInput(taskInput);
+                task.addTaskInput(taskInput);
                 allTasks.add(task);
                 count++;
             }
@@ -131,22 +133,22 @@ public class JobTracker implements Serializable {
 
         for (Task pendingTask : allTasks) {
             do {
-                if(allSlavesDead) {
+                if (allSlavesDead) {
                     System.out.println("All slaves offline! :o");
                     return;
                 }
 
-                if(nodeIterator.hasNext())  {
+                if (nodeIterator.hasNext()) {
                     temp = (Node) nodeIterator.next();
                 } else {
                     nodeIterator = activeSlaves.iterator();
                     count++;
                 }
 
-                if(count == 2) {
+                if (count == 2) {
                     allSlavesDead = true;
                 }
-            } while(SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID()));
+            } while (SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID()));
 
             allSlavesDead = false;
             count = 0;
@@ -175,28 +177,28 @@ public class JobTracker implements Serializable {
         int count = 0;
 
         outstandingTaskCount--;
-        if(currentTaskFor.containsKey(slaveID)) {
+        if (currentTaskFor.containsKey(slaveID)) {
             pendingTasks.get(slaveID).add(currentTaskFor.get(slaveID));
         }
 
         for (Task pendingTask : pendingTasks.get(slaveID)) {
             do {
-                if(allSlavesDead) {
+                if (allSlavesDead) {
                     System.out.println("All slaves offline! :o");
                     return;
                 }
 
-                if(nodeIterator.hasNext())  {
+                if (nodeIterator.hasNext()) {
                     temp = (Node) nodeIterator.next();
                 } else {
                     nodeIterator = activeSlaves.iterator();
                     count++;
                 }
 
-                if(count == 2) {
+                if (count == 2) {
                     allSlavesDead = true;
                 }
-            } while(SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID()));
+            } while (SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID()));
 
             allSlavesDead = false;
             count = 0;
@@ -254,6 +256,8 @@ public class JobTracker implements Serializable {
             initializeReduceTasks();
             assignTasks();
             beginTasks();
+        } else if (getOutstandingTaskCount() == 0 && !isMapPhase) {
+            writeOutput();
         }
     }
 
@@ -280,36 +284,71 @@ public class JobTracker implements Serializable {
     public void collectTaskOutput(Task task) {
         File localFile;
         synchronized (this) {
-            localFile = FileSystem.copyFromRemotePath(task.getTaskOutput().getRemoteDataPath());
-            parseKeyValuePair(localFile, task.getType());
+            for (Output output : task.getTaskOutput()) {
+                localFile = FileSystem.copyFromRemotePath(output.getRemoteDataPath());
+                parseKeyValuePair(localFile, task.getType());
+            }
         }
     }
 
     private void parseKeyValuePair(File intermediateFile, Task.Type type) {
         BufferedReader bufferedReader;
-        StringTokenizer stringTokenizer;
-        String temp, key, value;
+        String temp;
         PrintWriter printWriter;
+        File intermediateChunk;
 
+        if (type == Task.Type.MAP) {
+            try {
+                bufferedReader = new BufferedReader(new FileReader(intermediateFile));
+                while ((temp = bufferedReader.readLine()) != null) {
+                    intermediateChunk = new File(intermediateDir, "" + temp.charAt(0));
+                    printWriter = new PrintWriter(new FileWriter(intermediateChunk, true));
+                    printWriter.println(temp);
+                    printWriter.flush();
+                    printWriter.close();
+                }
+                bufferedReader.close();
+            } catch (java.io.IOException e) {
+                e.printStackTrace();
+            }
+        } else {
+            reduceKeyValuePair(intermediateFile);
+        }
+    }
+
+    private void reduceKeyValuePair(File file) {
+        String temp, key, value;
+        StringTokenizer stringTokenizer;
+        Integer valueFinal;
         try {
-            bufferedReader = new BufferedReader(new FileReader(intermediateFile));
+            BufferedReader bufferedReader = new BufferedReader(new FileReader(file));
             while ((temp = bufferedReader.readLine()) != null) {
                 stringTokenizer = new StringTokenizer(temp, ":");
                 key = stringTokenizer.nextToken();
                 value = stringTokenizer.nextToken();
-                if (type == Task.Type.MAP) {
-                    printWriter = new PrintWriter(new FileWriter(new File(intermediateDir, key), true));
-                    printWriter.println(value);
+                if (reduceKeys.containsKey(key)) {
+                    valueFinal = reduceKeys.get(key) + Integer.valueOf(value);
+                    reduceKeys.put(key, valueFinal);
                 } else {
-                    printWriter = new PrintWriter(new FileWriter(jobOutput.getLocalFile(), true));
-                    printWriter.println(key + " " + value);
+                    reduceKeys.put(key, Integer.valueOf(value));
                 }
-
-                printWriter.flush();
-                printWriter.close();
             }
             bufferedReader.close();
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void writeOutput() {
+        PrintWriter printWriter;
+        try {
+            printWriter = new PrintWriter(new FileWriter(jobOutput.getLocalFile(), true));
+            for (Map.Entry<String, Integer> keyValuePair : reduceKeys.entrySet()) {
+                printWriter.println(keyValuePair.getKey() + " " + keyValuePair.getValue());
+            }
+            printWriter.flush();
+            printWriter.close();
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }

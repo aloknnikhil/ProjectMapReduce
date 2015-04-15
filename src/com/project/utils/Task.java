@@ -5,6 +5,8 @@ import kafka.serializer.Decoder;
 import kafka.serializer.Encoder;
 
 import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
@@ -26,10 +28,15 @@ public class Task implements Serializable, Encoder<Task>, Decoder<Task> {
 
     private int taskID;
     private int executorID;
-    private Input taskInput;
-    private Output taskOutput;
+    private List<Input> taskInput;
+    private List<Output> taskOutput;
     private Type type;
     private Status status;
+
+    public Task()   {
+        taskInput = new ArrayList<>();
+        taskOutput = new ArrayList<>();
+    }
 
     public int getTaskID() {
         return taskID;
@@ -47,19 +54,23 @@ public class Task implements Serializable, Encoder<Task>, Decoder<Task> {
         this.executorID = executorID;
     }
 
-    public Input getTaskInput() {
+    public List<Input> getTaskInput() {
         return taskInput;
     }
 
-    public void setTaskInput(Input taskInput) {
+    public void setTaskInput(List<Input> taskInput) {
         this.taskInput = taskInput;
     }
 
-    public Output getTaskOutput() {
+    public void addTaskInput(Input taskInput)   {
+        this.taskInput.add(taskInput);
+    }
+
+    public List<Output> getTaskOutput() {
         return taskOutput;
     }
 
-    public void setTaskOutput(Output taskOutput) {
+    public void setTaskOutput(List<Output> taskOutput) {
         this.taskOutput = taskOutput;
     }
 
@@ -79,13 +90,24 @@ public class Task implements Serializable, Encoder<Task>, Decoder<Task> {
         this.status = status;
     }
 
-    public static Task convertToRemoteInput(Task task)  {
-        if(task.getTaskInput().getType() == Input.Type.LOCAL) {
-            Input input = task.getTaskInput();
-            input.setType(Input.Type.REMOTE);
-            input.setRemoteDataPath(FileSystem.copyFromLocalFile(input.getLocalFile()));
-            input.setLocalFile(null);
-            task.setTaskInput(input);
+    public static Task convertToRemoteInput(Task task) {
+        if(task.getTaskInput().get(0).getType() == Input.Type.LOCAL) {
+            for(Input input : task.getTaskInput()) {
+                input.setType(Input.Type.REMOTE);
+                input.setRemoteDataPath(FileSystem.copyFromLocalFile(input.getLocalFile()));
+                input.setLocalFile(null);
+            }
+        }
+        return task;
+    }
+
+    public static Task convertToRemoteOutput(Task task) {
+        if(task.getTaskOutput().get(0).getType() == Output.Type.LOCAL) {
+            for(Output output : task.getTaskOutput()) {
+                output.setType(Output.Type.REMOTE);
+                output.setRemoteDataPath(FileSystem.copyFromLocalFile(output.getLocalFile()));
+                output.setLocalFile(null);
+            }
         }
         return task;
     }
