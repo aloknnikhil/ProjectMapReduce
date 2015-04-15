@@ -8,10 +8,7 @@ import com.project.application.OutputCollector;
 import com.project.application.Reducer;
 import com.project.application.WordCount;
 import com.project.storage.FileSystem;
-import com.project.utils.Input;
-import com.project.utils.Node;
-import com.project.utils.Output;
-import com.project.utils.Task;
+import com.project.utils.*;
 import javafx.util.Pair;
 
 import java.io.*;
@@ -56,7 +53,7 @@ public class TaskTracker implements OutputCollector, Serializable {
         HashMap<String, List<Integer>> keyValuePairs = new HashMap<>();
         String temp, key, value;
         List<Integer> tempList;
-        StringTokenizer stringTokenizer;
+        Splitter splitter;
         intermediateFile = new File(MapRSession.getRootDir(), task.getType() + "_"
                 + task.getExecutorID() + "_" + task.getTaskID());
         newTask = true;
@@ -65,9 +62,9 @@ public class TaskTracker implements OutputCollector, Serializable {
                 file = FileSystem.copyFromRemotePath(input.getRemoteDataPath());
                 BufferedReader bufferedReader = new BufferedReader(new FileReader(file));
                 while ((temp = bufferedReader.readLine()) != null) {
-                    stringTokenizer = new StringTokenizer(temp, ":");
-                    key = stringTokenizer.nextToken();
-                    value = stringTokenizer.nextToken();
+                    splitter = new Splitter(temp);
+                    key = splitter.getKey();
+                    value = splitter.getValue();
                     if(keyValuePairs.containsKey(key)) {
                         keyValuePairs.get(key).add(Integer.valueOf(value));
                         keyValuePairs.put(key, keyValuePairs.get(key));
@@ -102,7 +99,7 @@ public class TaskTracker implements OutputCollector, Serializable {
                 taskOutput.add(output);
             }
 
-            printWriter.println(keyValuePair.getKey() + ":" + keyValuePair.getValue());
+            printWriter.println(keyValuePair.getKey() + Splitter.DELIMITER + keyValuePair.getValue());
             printWriter.flush();
             printWriter.close();
             newTask = false;

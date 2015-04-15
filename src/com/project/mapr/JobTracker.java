@@ -3,10 +3,7 @@ package com.project.mapr;
 import com.project.ResourceManager;
 import com.project.SocketTaskHandler;
 import com.project.storage.FileSystem;
-import com.project.utils.Input;
-import com.project.utils.Node;
-import com.project.utils.Output;
-import com.project.utils.Task;
+import com.project.utils.*;
 
 import java.io.*;
 import java.util.*;
@@ -301,7 +298,7 @@ public class JobTracker implements Serializable {
             try {
                 bufferedReader = new BufferedReader(new FileReader(intermediateFile));
                 while ((temp = bufferedReader.readLine()) != null) {
-                    intermediateChunk = new File(intermediateDir, "" + temp.charAt(0));
+                    intermediateChunk = new File(intermediateDir, "key_" + temp.charAt(0));
                     printWriter = new PrintWriter(new FileWriter(intermediateChunk, true));
                     printWriter.println(temp);
                     printWriter.flush();
@@ -317,15 +314,15 @@ public class JobTracker implements Serializable {
     }
 
     private void reduceKeyValuePair(File file) {
-        String temp, key, value;
-        StringTokenizer stringTokenizer;
+        String temp, key = null, value = null;
+        Splitter splitter;
         Integer valueFinal;
         try {
             BufferedReader bufferedReader = new BufferedReader(new FileReader(file));
             while ((temp = bufferedReader.readLine()) != null) {
-                stringTokenizer = new StringTokenizer(temp, ":");
-                key = stringTokenizer.nextToken();
-                value = stringTokenizer.nextToken();
+                splitter = new Splitter(temp);
+                key = splitter.getKey();
+                value = splitter.getValue();
                 if (reduceKeys.containsKey(key)) {
                     valueFinal = reduceKeys.get(key) + Integer.valueOf(value);
                     reduceKeys.put(key, valueFinal);
@@ -336,6 +333,8 @@ public class JobTracker implements Serializable {
             bufferedReader.close();
         } catch (IOException e) {
             e.printStackTrace();
+        } catch (NumberFormatException e)   {
+            System.out.println("File name: " + file.getAbsolutePath() + " Key: " + key + " Value: " + value);
         }
     }
 
