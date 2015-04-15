@@ -21,7 +21,8 @@ public class Task implements Serializable, Encoder<Task>, Decoder<Task> {
     public enum Status {
         INITIALIZED,
         RUNNING,
-        COMPLETE
+        COMPLETE,
+        END
     }
 
     private int taskID;

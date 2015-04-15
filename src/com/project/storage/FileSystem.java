@@ -18,6 +18,7 @@ import com.netflix.astyanax.thrift.ThriftFamilyFactory;
 import com.project.MapRSession;
 import com.project.utils.LogFile;
 import com.project.utils.Node;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 
 import java.io.*;
@@ -31,6 +32,7 @@ public class FileSystem {
     private AstyanaxContext<Keyspace> context;
     private Keyspace keyspace;
     private CassandraChunkedStorageProvider chunkedStorageProvider;
+    private File tempDir;
     public static ColumnFamily<String, String> CF_CHUNK =
             ColumnFamily.newColumnFamily("cfchunk", StringSerializer.get(), StringSerializer.get());
 
@@ -40,6 +42,9 @@ public class FileSystem {
 
     private void configureFileSystem() {
         connectToBackStore();
+        tempDir = new File("out/temp_" + MapRSession.getInstance().getActiveNode().getNodeID());
+        if(!tempDir.exists())
+            tempDir.mkdir();
     }
 
     private static FileSystem getInstance() {
@@ -74,6 +79,33 @@ public class FileSystem {
                     .call();
             return remoteFile;
         } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public static File storeTempFile(File file)    {
+        try {
+            String id = FileUtils.checksumCRC32(file) + "";
+            File newTempFile = new File(getInstance().tempDir, id);
+            FileUtils.copyFile(file, newTempFile);
+            file.delete();
+            return newTempFile;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public static File getTempFile(String id)  {
+        File tempFile = new File(getInstance().tempDir, id);
+        try {
+            if(FileUtils.directoryContains(getInstance().tempDir, tempFile))    {
+                return tempFile;
+            }
+            else
+                return null;
+        } catch (IOException e) {
             e.printStackTrace();
             return null;
         }

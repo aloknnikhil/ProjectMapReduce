@@ -4,6 +4,7 @@ import com.project.utils.DataSerializer;
 import com.project.utils.LogFile;
 import com.project.utils.Node;
 import org.I0Itec.zkclient.ZkClient;
+import org.I0Itec.zkclient.exception.ZkNodeExistsException;
 import org.apache.zookeeper.*;
 
 import java.util.ArrayList;
@@ -159,12 +160,16 @@ public class ResourceManager {
     private static void createZNode(String path, Object data, CreateMode createMode) {
 
         if (!getInstance().zkClient.exists(path)) {
-            switch (createMode) {
-                case EPHEMERAL:
-                    getInstance().zkClient.createEphemeral(path, data);
-                    break;
-                case PERSISTENT:
-                    getInstance().zkClient.createPersistent(path, data);
+            try {
+                switch (createMode) {
+                    case EPHEMERAL:
+                        getInstance().zkClient.createEphemeral(path, data);
+                        break;
+                    case PERSISTENT:
+                        getInstance().zkClient.createPersistent(path, data);
+                }
+            } catch (ZkNodeExistsException e) {
+                return;
             }
         }
     }
