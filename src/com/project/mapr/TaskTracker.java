@@ -91,7 +91,7 @@ public class TaskTracker implements OutputCollector, Serializable {
         Output output;
         File intermediateChunk;
         try {
-            intermediateChunk = new File(intermediateFile.getAbsolutePath() + "_" + keyValuePair.getKey().charAt(0));
+            intermediateChunk = new File(intermediateFile.getAbsolutePath() + "_" + (int) keyValuePair.getKey().charAt(0));
             PrintWriter printWriter = new PrintWriter(new FileWriter(intermediateChunk, !newTask));
             output = new Output(intermediateChunk);
 

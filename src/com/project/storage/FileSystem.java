@@ -18,6 +18,7 @@ import com.netflix.astyanax.thrift.ThriftFamilyFactory;
 import com.project.MapRSession;
 import com.project.utils.LogFile;
 import com.project.utils.Node;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 
 import java.io.*;
@@ -52,20 +53,22 @@ public class FileSystem {
     }
 
     public static String copyFromLocalFile(File localFile) {
+        long checkSum = 0;
         try {
+            checkSum = FileUtils.checksumCRC32(localFile);
             ByteArrayInputStream in = new ByteArrayInputStream(IOUtils.toByteArray(new FileInputStream(localFile)));
             ChunkedStorage.newWriter(getInstance().chunkedStorageProvider,
-                    localFile.getAbsolutePath(), in)
+                    checkSum + "", in)
                     .withChunkSize(16384)
                     .call();
         } catch (Exception e) {
             e.printStackTrace();
         }
-        return localFile.getAbsolutePath();
+        return checkSum + "";
     }
 
     public static File copyFromRemotePath(String remoteDataPath) {
-        File remoteFile = new File(MapRSession.getRootDir(), remoteDataPath.substring(remoteDataPath.lastIndexOf("/") + 1));
+        File remoteFile = new File(MapRSession.getRootDir(), remoteDataPath);
         try {
             FileOutputStream outputStream = new FileOutputStream(remoteFile);
             ChunkedStorage.newReader(getInstance().chunkedStorageProvider, remoteDataPath, outputStream)
