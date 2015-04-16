@@ -15,6 +15,7 @@ import javafx.util.Pair;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
@@ -25,6 +26,7 @@ public class TaskTracker implements OutputCollector, Serializable {
     private Reducer reducer;
     private File intermediateFile;
     private HashMap<String, List<Integer>> reduceKeyValuePairs;
+    private AtomicInteger count;
 
     public TaskTracker() {
         mapper = new WordCount();
@@ -41,21 +43,22 @@ public class TaskTracker implements OutputCollector, Serializable {
         finishTask(task);
     }
 
-    public void runReduce(Task task) {
+    public void runReduce(final Task task) {
         ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                 Node.Status.BUSY);
         File file = FileSystem.copyFromRemotePath(task.getTaskInput().getRemoteDataPath());
         List<Integer> values;
-        String temp, key = null, value;
+        String temp, key, value;
         StringTokenizer stringTokenizer;
+        count = new AtomicInteger(0);
         intermediateFile = new File(MapRSession.getRootDir(), task.getType() + "_" + task.getExecutorID());
         try {
             BufferedReader bufferedReader = new BufferedReader(new FileReader(file));
-            while((temp = bufferedReader.readLine()) != null)   {
+            while ((temp = bufferedReader.readLine()) != null) {
                 stringTokenizer = new StringTokenizer(temp, ":");
                 key = stringTokenizer.nextToken();
                 value = stringTokenizer.nextToken();
-                if(reduceKeyValuePairs.containsKey(key))    {
+                if (reduceKeyValuePairs.containsKey(key)) {
                     reduceKeyValuePairs.get(key).add(Integer.valueOf(value));
                 } else {
                     values = new ArrayList<>();
@@ -67,8 +70,8 @@ public class TaskTracker implements OutputCollector, Serializable {
             e.printStackTrace();
         }
 
-        for(Map.Entry<String, List<Integer>> entry : reduceKeyValuePairs.entrySet()) {
-            reducer.reduce(entry.getKey(), entry.getValue().iterator(), this);
+        for (final Map.Entry<String, List<Integer>> entry : reduceKeyValuePairs.entrySet()) {
+            reducer.reduce(entry.getKey(), entry.getValue().iterator(), TaskTracker.this);
         }
         finishTask(task);
     }
@@ -77,9 +80,11 @@ public class TaskTracker implements OutputCollector, Serializable {
     public void collect(Pair<String, Integer> keyValuePair) {
         try {
             PrintWriter printWriter = new PrintWriter(new FileWriter(intermediateFile, true));
-            printWriter.println(keyValuePair.getKey() + ":" + keyValuePair.getValue());
-            printWriter.flush();
-            printWriter.close();
+            synchronized (intermediateFile) {
+                printWriter.println(keyValuePair.getKey() + ":" + keyValuePair.getValue());
+                printWriter.flush();
+                printWriter.close();
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -92,8 +97,8 @@ public class TaskTracker implements OutputCollector, Serializable {
                 Node.Status.IDLE);
     }
 
-    public void getPhaseOutput(Task task)   {
-        if(task.getStatus() == Task.Status.COMPLETE) {
+    public void getPhaseOutput(Task task) {
+        if (task.getStatus() == Task.Status.COMPLETE) {
             ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                     Node.Status.BUSY);
             task.setStatus(Task.Status.END);

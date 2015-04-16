@@ -220,11 +220,16 @@ public class JobTracker implements Serializable {
     }
 
     public void beginTasks() {
-        for (Map.Entry<Integer, Queue<Task>> entry : pendingTasks.entrySet()) {
+        for (final Map.Entry<Integer, Queue<Task>> entry : pendingTasks.entrySet()) {
             if (entry.getValue().size() != 0) {
                 outstandingTaskCount++;
                 currentTaskFor.put(entry.getKey(), entry.getValue().remove());
-                SocketTaskHandler.dispatchTask(Task.convertToRemoteInput(currentTaskFor.get(entry.getKey())));
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        SocketTaskHandler.dispatchTask(Task.convertToRemoteInput(currentTaskFor.get(entry.getKey())));
+                    }
+                }).start();
             }
         }
     }
@@ -291,24 +296,29 @@ public class JobTracker implements Serializable {
         return outstandingTaskCount;
     }
 
-    public void collectTaskOutput(Task task) {
-        File localFile;
-        synchronized (pendingResults) {
-            if (task.getStatus() == Task.Status.COMPLETE) {
+    public void collectTaskOutput(final Task task) {
+        if (task.getStatus() == Task.Status.COMPLETE) {
+            synchronized (pendingResults) {
                 if (!pendingResults.contains(task.getExecutorID()))
                     pendingResults.add(task.getExecutorID());
-            } else if (task.getStatus() == Task.Status.END) {
-                localFile = FileSystem.copyFromRemotePath(task.getTaskOutput().getRemoteDataPath());
-                parseKeyValuePair(localFile, task.getType());
-                pendingResults.remove(new Integer(task.getExecutorID()));
-
-                if (pendingResults.size() == 0 && isMapPhase) {
-                    isMapPhase = false;
-                    initializeReduceTasks();
-                    assignTasks();
-                    beginTasks();
-                }
             }
+        } else if (task.getStatus() == Task.Status.END) {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    File localFile = FileSystem.copyFromRemotePath(task.getTaskOutput().getRemoteDataPath());
+                    synchronized (pendingResults) {
+                        parseKeyValuePair(localFile, task.getType());
+                        pendingResults.remove(new Integer(task.getExecutorID()));
+                        if (pendingResults.size() == 0 && isMapPhase) {
+                            isMapPhase = false;
+                            initializeReduceTasks();
+                            assignTasks();
+                            beginTasks();
+                        }
+                    }
+                }
+            }).start();
         }
     }
 
