@@ -80,11 +80,9 @@ public class TaskTracker implements OutputCollector, Serializable {
     public void collect(Pair<String, Integer> keyValuePair) {
         try {
             PrintWriter printWriter = new PrintWriter(new FileWriter(intermediateFile, true));
-            synchronized (intermediateFile) {
-                printWriter.println(keyValuePair.getKey() + ":" + keyValuePair.getValue());
-                printWriter.flush();
-                printWriter.close();
-            }
+            printWriter.println(keyValuePair.getKey() + ":" + keyValuePair.getValue());
+            printWriter.flush();
+            printWriter.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
