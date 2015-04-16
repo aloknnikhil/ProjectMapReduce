@@ -26,19 +26,21 @@ public class TaskTracker implements OutputCollector, Serializable {
     private Reducer reducer;
     private File intermediateFile;
     private HashMap<String, List<Integer>> reduceKeyValuePairs;
-    private AtomicInteger count;
+    private HashMap<Integer, String> destinationPartitions;
+    private Task currentTask;
 
     public TaskTracker() {
         mapper = new WordCount();
         reducer = new WordCount();
         reduceKeyValuePairs = new HashMap<>();
+        destinationPartitions = new HashMap<>();
     }
 
     public void runMap(Task task) {
         ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                 Node.Status.BUSY);
+        currentTask = task;
         File file = FileSystem.copyFromRemotePath(task.getTaskInput().getRemoteDataPath());
-        intermediateFile = new File(MapRSession.getRootDir(), task.getType() + "_" + task.getExecutorID());
         mapper.map(file, this);
         finishTask(task);
     }
@@ -46,12 +48,12 @@ public class TaskTracker implements OutputCollector, Serializable {
     public void runReduce(final Task task) {
         ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                 Node.Status.BUSY);
+        currentTask = task;
         File file = FileSystem.copyFromRemotePath(task.getTaskInput().getRemoteDataPath());
         List<Integer> values;
         String temp, key, value;
         StringTokenizer stringTokenizer;
-        count = new AtomicInteger(0);
-        intermediateFile = new File(MapRSession.getRootDir(), task.getType() + "_" + task.getExecutorID());
+        intermediateFile = new File(MapRSession.getRootDir(), task.getType() + "_" + task.getCurrentExecutorID());
         try {
             BufferedReader bufferedReader = new BufferedReader(new FileReader(file));
             while ((temp = bufferedReader.readLine()) != null) {
@@ -70,15 +72,21 @@ public class TaskTracker implements OutputCollector, Serializable {
             e.printStackTrace();
         }
 
-        for (final Map.Entry<String, List<Integer>> entry : reduceKeyValuePairs.entrySet()) {
-            reducer.reduce(entry.getKey(), entry.getValue().iterator(), TaskTracker.this);
-        }
         finishTask(task);
     }
 
     @Override
     public void collect(Pair<String, Integer> keyValuePair) {
+        int partitionID = ResourceManager.getPartitionForKey(keyValuePair.getKey());
         try {
+            if(currentTask.getType() == Task.Type.MAP) {
+                intermediateFile = new File(MapRSession.getRootDir(), currentTask.getType() + "_"
+                        + currentTask.getCurrentExecutorID() + "_"
+                        + partitionID);
+                if (!destinationPartitions.containsKey(partitionID))
+                    destinationPartitions.put(partitionID, intermediateFile.getAbsolutePath());
+            }
+
             PrintWriter printWriter = new PrintWriter(new FileWriter(intermediateFile, true));
             printWriter.println(keyValuePair.getKey() + ":" + keyValuePair.getValue());
             printWriter.flush();
@@ -100,7 +108,20 @@ public class TaskTracker implements OutputCollector, Serializable {
             ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                     Node.Status.BUSY);
             task.setStatus(Task.Status.END);
-            task.setTaskOutput(new Output(FileSystem.copyFromLocalFile(intermediateFile)));
+
+            if(task.getType() == Task.Type.MAP) {
+                for(Map.Entry<Integer, String> entry : destinationPartitions.entrySet())    {
+                    destinationPartitions.put(entry.getKey(),
+                            FileSystem.copyFromLocalFile(new File(entry.getValue())));
+                }
+                task.setReducePartitionIDs(destinationPartitions);
+            } else if(task.getType() == Task.Type.REDUCE) {
+                for (final Map.Entry<String, List<Integer>> entry : reduceKeyValuePairs.entrySet()) {
+                    reducer.reduce(entry.getKey(), entry.getValue().iterator(), TaskTracker.this);
+                }
+                task.setTaskOutput(new Output(FileSystem.copyFromLocalFile(intermediateFile)));
+            }
+
             SocketTaskHandler.modifyTask(task);
             ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                     Node.Status.IDLE);

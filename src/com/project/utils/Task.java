@@ -5,6 +5,9 @@ import kafka.serializer.Decoder;
 import kafka.serializer.Encoder;
 
 import java.io.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
@@ -26,11 +29,17 @@ public class Task implements Serializable, Encoder<Task>, Decoder<Task> {
     }
 
     private int taskID;
-    private int executorID;
+    private int currentExecutorID;
+
+    private HashMap<Integer, String> reducePartitionIDs;
     private Input taskInput;
     private Output taskOutput;
     private Type type;
     private Status status;
+
+    public Task()   {
+        reducePartitionIDs = new HashMap();
+    }
 
     public int getTaskID() {
         return taskID;
@@ -40,12 +49,12 @@ public class Task implements Serializable, Encoder<Task>, Decoder<Task> {
         this.taskID = taskID;
     }
 
-    public int getExecutorID() {
-        return executorID;
+    public int getCurrentExecutorID() {
+        return currentExecutorID;
     }
 
-    public void setExecutorID(int executorID) {
-        this.executorID = executorID;
+    public void setCurrentExecutorID(int currentExecutorID) {
+        this.currentExecutorID = currentExecutorID;
     }
 
     public Input getTaskInput() {
@@ -89,6 +98,14 @@ public class Task implements Serializable, Encoder<Task>, Decoder<Task> {
             task.setTaskInput(input);
         }
         return task;
+    }
+
+    public HashMap<Integer, String> getReducePartitionIDs() {
+        return reducePartitionIDs;
+    }
+
+    public void setReducePartitionIDs(HashMap<Integer, String> reducePartitionIDs) {
+        this.reducePartitionIDs = reducePartitionIDs;
     }
 
     @Override

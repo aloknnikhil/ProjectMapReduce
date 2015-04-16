@@ -75,7 +75,7 @@ public class SocketTaskHandler {
             public void run() {
                 ObjectOutputStream nodeSocket;
                 if(MapRSession.getInstance().getActiveNode().getType() == Node.Type.MASTER)
-                    nodeSocket = getInstance().connectedSlaves.get(task.getExecutorID());
+                    nodeSocket = getInstance().connectedSlaves.get(task.getCurrentExecutorID());
                 else
                     nodeSocket = getInstance().masterSocket;
                 writeTaskToSocket(nodeSocket, task);
@@ -166,7 +166,7 @@ public class SocketTaskHandler {
                     task = new Task();
                     task.setType(Task.Type.HEARTBEAT);
                     task.setStatus(Task.Status.INITIALIZED);
-                    task.setExecutorID(slaveID);
+                    task.setCurrentExecutorID(slaveID);
                     getInstance().pendingHeartBeats.put(slaveID, getInstance().pendingHeartBeats.get(slaveID) + 1);
                     if(writeTaskToSocket(getInstance().connectedSlaves.get(slaveID), task))
                         System.out.println("Beat for " + slaveID);
@@ -203,7 +203,7 @@ public class SocketTaskHandler {
                             synchronized (task) {
                                 task = (Task) objectInputStream.readUnshared();
                                 if (task.getType() == Task.Type.ACK) {
-                                    getInstance().pendingHeartBeats.put(task.getExecutorID(), 0);
+                                    getInstance().pendingHeartBeats.put(task.getCurrentExecutorID(), 0);
                                 } else {
                                     switch (task.getStatus()) {
                                         case END:
