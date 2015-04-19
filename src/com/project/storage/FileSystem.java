@@ -12,16 +12,16 @@ import com.netflix.astyanax.impl.AstyanaxConfigurationImpl;
 import com.netflix.astyanax.model.ColumnFamily;
 import com.netflix.astyanax.recipes.storage.CassandraChunkedStorageProvider;
 import com.netflix.astyanax.recipes.storage.ChunkedStorage;
-import com.netflix.astyanax.recipes.storage.ObjectMetadata;
 import com.netflix.astyanax.serializers.StringSerializer;
 import com.netflix.astyanax.thrift.ThriftFamilyFactory;
 import com.project.MapRSession;
 import com.project.utils.LogFile;
-import com.project.utils.Node;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 
 import java.io.*;
+import java.security.MessageDigest;
+import java.util.HashMap;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
@@ -35,6 +35,9 @@ public class FileSystem {
     private File tempDir;
     public static ColumnFamily<String, String> CF_CHUNK =
             ColumnFamily.newColumnFamily("cfchunk", StringSerializer.get(), StringSerializer.get());
+    private HashMap<byte[], String> cacheRemoteRefs;
+    private HashMap<byte[], String> cacheLocalRefs;
+    private MessageDigest messageDigest;
 
     private FileSystem() {
         configureFileSystem();
@@ -42,6 +45,8 @@ public class FileSystem {
 
     private void configureFileSystem() {
         connectToBackStore();
+        cacheRemoteRefs = new HashMap<>();
+        cacheLocalRefs = new HashMap<>();
         tempDir = new File("out/temp_" + MapRSession.getInstance().getActiveNode().getNodeID());
         if(!tempDir.exists())
             tempDir.mkdir();
@@ -58,11 +63,23 @@ public class FileSystem {
 
     public static String copyFromLocalFile(File localFile) {
         try {
-            ByteArrayInputStream in = new ByteArrayInputStream(IOUtils.toByteArray(new FileInputStream(localFile)));
+            byte[] fileContents = IOUtils.toByteArray(new FileInputStream(localFile));
+            getInstance().messageDigest = MessageDigest.getInstance("MD5");
+            getInstance().messageDigest.update(fileContents);
+            byte[] hashContents = getInstance().messageDigest.digest();
+
+            synchronized (getInstance().cacheRemoteRefs) {
+                if (getInstance().cacheRemoteRefs.containsKey(hashContents)) {
+                    return getInstance().cacheRemoteRefs.get(hashContents);
+                }
+            }
+
+            ByteArrayInputStream in = new ByteArrayInputStream(fileContents);
             ChunkedStorage.newWriter(getInstance().chunkedStorageProvider,
                     localFile.getAbsolutePath(), in)
                     .withChunkSize(16384)
                     .call();
+            getInstance().cacheRemoteRefs.put(hashContents, localFile.getAbsolutePath());
         } catch (Exception e) {
             e.printStackTrace();
         }
