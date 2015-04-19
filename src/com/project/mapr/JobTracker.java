@@ -3,10 +3,7 @@ package com.project.mapr;
 import com.project.ResourceManager;
 import com.project.SocketTaskHandler;
 import com.project.storage.FileSystem;
-import com.project.utils.Input;
-import com.project.utils.Node;
-import com.project.utils.Output;
-import com.project.utils.Task;
+import com.project.utils.*;
 
 import java.io.*;
 import java.util.*;
@@ -20,21 +17,18 @@ public class JobTracker implements Serializable {
     private List<Task> scheduledMapTasks;
     private HashMap<Integer, Queue<Task>> pendingReduceTasks;
     private HashMap<Integer, Queue<Task>> pendingMapTasks;
-    private HashMap<Integer, Queue<Task>> completedTasks;
-    private HashMap<Integer, Task> currentTaskFor;
     private List<Integer> pendingResults;
     public List<Node> activeSlaves;
     private Input jobInput;
     private Output jobOutput;
-    private int outstandingTaskCount = 0;
+    private int runningTasksCount = 0;
+    private int completedTasksCount = 0;
     private boolean isMapPhase = true;
 
     private File intermediateDir = new File("out/intermediate");
 
     public JobTracker(Input inputFile) {
-        completedTasks = new HashMap<>();
         pendingMapTasks = new HashMap<>();
-        currentTaskFor = new HashMap<>();
         scheduledMapTasks = new ArrayList<>();
         pendingReduceTasks = new HashMap<>();
         pendingResults = new ArrayList<>();
@@ -42,14 +36,19 @@ public class JobTracker implements Serializable {
         jobOutput = new Output(new File("results.txt"));
         if (!intermediateDir.exists())
             intermediateDir.mkdir();
+        LogFile.writeToLog("Job Tracker initialized. Output will be written to /results.txt");
     }
 
     public void start() {
         checkForSlaves();
         SocketTaskHandler.getInstance().connectToSlaves();
+        LogFile.writeToLog("All slaves connected");
+        LogFile.writeToLog("Started partitioning map tasks");
         initializeMapTasks();
-        System.out.println("Pending Tasks: " + scheduledMapTasks.size());
+        LogFile.writeToLog("Map tasks have been created");
         assignMapTasks();
+        LogFile.writeToLog("Job Scheduler has assigned map tasks");
+        LogFile.writeToLog("Map phase has begun");
         beginTasks();
     }
 
@@ -141,12 +140,11 @@ public class JobTracker implements Serializable {
 
         for (final Map.Entry<Integer, Queue<Task>> entry : pendingTasks.entrySet()) {
             if (entry.getValue().size() != 0) {
-                outstandingTaskCount++;
-                currentTaskFor.put(entry.getKey(), entry.getValue().remove());
+                runningTasksCount++;
                 new Thread(new Runnable() {
                     @Override
                     public void run() {
-                        SocketTaskHandler.dispatchTask(Task.convertToRemoteInput(currentTaskFor.get(entry.getKey())));
+                        SocketTaskHandler.dispatchTask(Task.convertToRemoteInput(entry.getValue().remove()));
                     }
                 }).start();
             }
@@ -154,82 +152,35 @@ public class JobTracker implements Serializable {
     }
 
     public void rescheduleTasksFrom(Integer slaveID) {
-        System.out.println("Started rescheduling slave " + slaveID + "'s tasks");
-        Iterator nodeIterator = activeSlaves.iterator();
-        Node temp = null;
-        Queue<Task> taskQueue;
-        boolean allSlavesDead = false;
-        int count = 0;
-
-        outstandingTaskCount--;
-        if (currentTaskFor.containsKey(slaveID)) {
-            pendingMapTasks.get(slaveID).add(currentTaskFor.get(slaveID));
-        }
-
-        for (Task pendingTask : pendingMapTasks.get(slaveID)) {
-            do {
-                if (allSlavesDead) {
-                    System.out.println("All slaves offline! :o");
-                    return;
-                }
-
-                if (nodeIterator.hasNext()) {
-                    temp = (Node) nodeIterator.next();
-                } else {
-                    nodeIterator = activeSlaves.iterator();
-                    count++;
-                }
-
-                if (count == 2) {
-                    allSlavesDead = true;
-                }
-            } while (SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID()));
-
-            allSlavesDead = false;
-            count = 0;
-
-            synchronized (pendingMapTasks) {
-                if (!SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID())) {
-                    pendingTask.setCurrentExecutorID(temp.getNodeID());
-                    if (pendingMapTasks.containsKey(temp.getNodeID())) {
-                        pendingMapTasks.get(temp.getNodeID()).add(pendingTask);
-                    } else {
-                        taskQueue = new LinkedBlockingQueue<>();
-                        taskQueue.add(pendingTask);
-                        pendingMapTasks.put(temp.getNodeID(), taskQueue);
-                    }
-                }
-            }
-        }
-        System.out.println("Finished rescheduling slave " + slaveID + "'s tasks");
     }
 
     public void markTaskComplete(Task task) {
-        Queue<Task> taskQueue;
         HashMap<Integer, Queue<Task>> pendingTasks = isMapPhase ? pendingMapTasks : pendingReduceTasks;
 
-        synchronized (currentTaskFor) {
+        synchronized (pendingTasks) {
             if (task.getStatus() != Task.Status.END) {
-                outstandingTaskCount--;
-                System.out.println("Task Status: " + task.getStatus());
+                runningTasksCount--;
+                completedTasksCount++;
             }
 
-            if (completedTasks.containsKey(task.getCurrentExecutorID())) {
-                completedTasks.get(task.getCurrentExecutorID()).add(task);
-            } else {
-                taskQueue = new LinkedBlockingQueue<>();
-                taskQueue.add(task);
-                completedTasks.put(task.getCurrentExecutorID(), taskQueue);
-                currentTaskFor.remove(task.getCurrentExecutorID());
-            }
             if (pendingTasks.get(task.getCurrentExecutorID()).size() > 0) {
-                outstandingTaskCount++;
-                currentTaskFor.put(task.getCurrentExecutorID(), pendingTasks.get(task.getCurrentExecutorID()).remove());
-                SocketTaskHandler.modifyTask(Task.convertToRemoteInput(currentTaskFor.get(task.getCurrentExecutorID())));
+                runningTasksCount++;
+                SocketTaskHandler.modifyTask(Task.convertToRemoteInput(
+                        pendingTasks.get(
+                                task.getCurrentExecutorID()).remove()));
             }
+
+            if(task.getType() == Task.Type.MAP)
+                LogFile.writeToLog("Map progress: " + completedTasksCount/pendingTasks.size()
+                        + "% Pending tasks: " + (pendingTasks.size() - completedTasksCount));
+            else
+                LogFile.writeToLog("Reduce progress: " + completedTasksCount/pendingTasks.size()
+                        + "% Pending tasks: " + (pendingTasks.size() - completedTasksCount));
         }
 
-        if (getOutstandingTaskCount() == 0) {
+        if (getRunningTasksCount() == 0) {
+            if(isMapPhase)
+                LogFile.writeToLog("Completed Map phase. Consolidating reduce tasks");
             collectResults(task.getType());
         }
     }
@@ -248,10 +199,6 @@ public class JobTracker implements Serializable {
         return new Task();
     }
 
-    public HashMap<Integer, Queue<Task>> getCompletedTasks() {
-        return completedTasks;
-    }
-
     public HashMap<Integer, Queue<Task>> getPendingMapTasks() {
         return pendingMapTasks;
     }
@@ -260,8 +207,8 @@ public class JobTracker implements Serializable {
         return scheduledMapTasks;
     }
 
-    public int getOutstandingTaskCount() {
-        return outstandingTaskCount;
+    public int getRunningTasksCount() {
+        return runningTasksCount;
     }
 
     public void collectTaskOutput(final Task task) {
@@ -292,8 +239,6 @@ public class JobTracker implements Serializable {
                     pendingResults.remove(new Integer(task.getCurrentExecutorID()));
                     if (pendingResults.size() == 0 && isMapPhase) {
                         isMapPhase = false;
-                        currentTaskFor.clear();
-                        completedTasks.clear();
                         beginTasks();
                     }
                 }

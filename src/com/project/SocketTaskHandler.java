@@ -1,5 +1,6 @@
 package com.project;
 
+import com.project.utils.LogFile;
 import com.project.utils.Node;
 import com.project.utils.Task;
 
@@ -29,11 +30,13 @@ public class SocketTaskHandler {
 
     public void connectToSlaves() {
         for (Map.Entry<Integer, String> entry : ResourceManager.slaveAddresses.entrySet()) {
+            LogFile.writeToLog("Waiting to connect to slave " + entry.getKey() + " at address " + entry.getValue());
             connectTo(entry.getKey());
         }
     }
 
     public void setupSocketListener() {
+        LogFile.writeToLog("Waiting for connection request from Master");
         dispatcherRunnable = new Runnable() {
 
             Socket socket;
@@ -49,7 +52,7 @@ public class SocketTaskHandler {
                     int port = Integer.parseInt(stringTokenizer.nextToken());
 
                     ServerSocket serverSocket = new ServerSocket(port);
-                    while (!Thread.currentThread().interrupted()) {
+                    while (!Thread.interrupted()) {
                         socket = serverSocket.accept();
                         socket.setSendBufferSize(64 * 1024);
                         socket.setReceiveBufferSize(64 * 1024);
@@ -57,11 +60,14 @@ public class SocketTaskHandler {
                                 new BufferedOutputStream(socket.getOutputStream()));
                         serverInstance = new Thread(new ServerProcess(socket));
                         serverInstance.start();
+                        LogFile.writeToLog("Connected to master successfully");
+                        LogFile.writeToLog("Terminating connection listener. We already have one master.");
+                        break;
                     }
                     serverSocket.close();
 
                 } catch (IOException e) {
-                    System.out.println("Error! Something went wrong. Please restart the process");
+                    LogFile.writeToLog("Error! Something went wrong. Shutting down process");
                 }
             }
         };
@@ -70,6 +76,7 @@ public class SocketTaskHandler {
     }
 
     public static void dispatchTask(final Task task) {
+        LogFile.writeToLog("Sending task to slave " + task.getCurrentExecutorID());
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -116,14 +123,16 @@ public class SocketTaskHandler {
                     Thread.sleep(2000);
                     redo = true;
                 } catch (InterruptedException e1) {
-                    System.out.println("Connect process interrupted. Exiting process.");
+                    LogFile.writeToLog("Connect process interrupted. Exiting process.");
                 }
             } catch (IOException e) {
                 e.printStackTrace();
             }
         } while (redo);
         getInstance().pendingHeartBeats.put(slaveID, 0);
+        LogFile.writeToLog("Connected to slave " + slaveID);
         startHeartBeat(slaveID);
+        LogFile.writeToLog("Started HeartBeat instance for slave " + slaveID);
     }
 
     private static void startHeartBeat(Integer slaveID)    {

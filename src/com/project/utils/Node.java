@@ -47,6 +47,7 @@ public class Node implements Serializable, IZkDataListener, TaskChangeListener {
 
         //If the com.alok.utils.Node is a master node, then we need additional setup procedures
         if (type == Type.MASTER) {
+            LogFile.writeToLog("Starting Job Tracker instance");
             jobTracker.start();
         }
         ResourceManager.registerNode(this);
