@@ -171,7 +171,7 @@ public class SocketTaskHandler {
                     Thread.sleep(2048);
                     if (getInstance().pendingHeartBeats.get(slaveID) > MAX_RETRY_COUNT) {
                         getInstance().offlineSlaves.add(slaveID);
-                        MapRSession.getInstance().getActiveNode().getJobTracker().acknowledgeFailure();
+                        MapRSession.getInstance().getActiveNode().getJobTracker().acknowledgeFailure(slaveID);
                         Thread.currentThread().interrupt();
                     }
 

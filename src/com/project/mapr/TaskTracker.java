@@ -37,58 +37,58 @@ public class TaskTracker implements OutputCollector, Serializable {
     }
 
     public void runMap(Task task) {
-        ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
-                Node.Status.BUSY);
-        currentTask = task;
-        File file = null;
-        if(MapRSession.getInstance().getMode() == MapRSession.Mode.ONLINE)
-            file = FileSystem.copyFromRemotePath(task.getTaskInput().getRemoteDataPath());
-        else {
-            try {
+        if (task.getType() == Task.Type.MAP) {
+            ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
+                    Node.Status.BUSY);
+            currentTask = task;
+            File file;
+            if (MapRSession.getInstance().getMode() == MapRSession.Mode.ONLINE)
+                file = FileSystem.copyFromRemotePath(task.getTaskInput().getRemoteDataPath());
+            else {
                 file = new File(task.getTaskInput().getLocalFile().getPath());
-            } catch (Exception e)   {
-                System.out.println("Task was " + task.getType());
             }
+            mapper.map(file, this);
+            finishTask(task);
         }
-        mapper.map(file, this);
-        finishTask(task);
     }
 
     public void runReduce(final Task task) {
-        ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
-                Node.Status.BUSY);
-        currentTask = task;
-        File file = FileSystem.copyFromRemotePath(task.getTaskInput().getRemoteDataPath());
-        List<Integer> values;
-        String temp, key, value;
-        StringTokenizer stringTokenizer;
-        intermediateFile = new File(MapRSession.getRootDir(), task.getType() + "_" + task.getCurrentExecutorID());
-        try {
-            BufferedReader bufferedReader = new BufferedReader(new FileReader(file));
-            while ((temp = bufferedReader.readLine()) != null) {
-                stringTokenizer = new StringTokenizer(temp, ":");
-                key = stringTokenizer.nextToken();
-                value = stringTokenizer.nextToken();
-                if (reduceKeyValuePairs.containsKey(key)) {
-                    reduceKeyValuePairs.get(key).add(Integer.valueOf(value));
-                } else {
-                    values = new ArrayList<>();
-                    values.add(Integer.valueOf(value));
-                    reduceKeyValuePairs.put(key, values);
+        if (task.getType() == Task.Type.REDUCE) {
+            ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
+                    Node.Status.BUSY);
+            currentTask = task;
+            File file = FileSystem.copyFromRemotePath(task.getTaskInput().getRemoteDataPath());
+            List<Integer> values;
+            String temp, key, value;
+            StringTokenizer stringTokenizer;
+            intermediateFile = new File(MapRSession.getRootDir(), task.getType() + "_" + task.getCurrentExecutorID());
+            try {
+                BufferedReader bufferedReader = new BufferedReader(new FileReader(file));
+                while ((temp = bufferedReader.readLine()) != null) {
+                    stringTokenizer = new StringTokenizer(temp, ":");
+                    key = stringTokenizer.nextToken();
+                    value = stringTokenizer.nextToken();
+                    if (reduceKeyValuePairs.containsKey(key)) {
+                        reduceKeyValuePairs.get(key).add(Integer.valueOf(value));
+                    } else {
+                        values = new ArrayList<>();
+                        values.add(Integer.valueOf(value));
+                        reduceKeyValuePairs.put(key, values);
+                    }
                 }
+            } catch (IOException e) {
+                e.printStackTrace();
             }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
 
-        finishTask(task);
+            finishTask(task);
+        }
     }
 
     @Override
     public void collect(Pair<String, Integer> keyValuePair) {
         int partitionID = ResourceManager.getPartitionForKey(keyValuePair.getKey());
         try {
-            if(currentTask.getType() == Task.Type.MAP) {
+            if (currentTask.getType() == Task.Type.MAP) {
                 intermediateFile = new File(MapRSession.getRootDir(), currentTask.getType() + "_"
                         + currentTask.getCurrentExecutorID() + "_"
                         + partitionID);
@@ -118,13 +118,13 @@ public class TaskTracker implements OutputCollector, Serializable {
                     Node.Status.BUSY);
             task.setStatus(Task.Status.END);
 
-            if(task.getType() == Task.Type.MAP) {
-                for(Map.Entry<Integer, String> entry : destinationPartitions.entrySet())    {
+            if (task.getType() == Task.Type.MAP) {
+                for (Map.Entry<Integer, String> entry : destinationPartitions.entrySet()) {
                     destinationPartitions.put(entry.getKey(),
                             FileSystem.copyFromLocalFile(new File(entry.getValue())));
                 }
                 task.setReducePartitionIDs(destinationPartitions);
-            } else if(task.getType() == Task.Type.REDUCE) {
+            } else if (task.getType() == Task.Type.REDUCE) {
                 for (final Map.Entry<String, List<Integer>> entry : reduceKeyValuePairs.entrySet()) {
                     reducer.reduce(entry.getKey(), entry.getValue().iterator(), TaskTracker.this);
                 }
