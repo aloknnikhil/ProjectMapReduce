@@ -40,11 +40,15 @@ public class TaskTracker implements OutputCollector, Serializable {
         ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                 Node.Status.BUSY);
         currentTask = task;
-        File file;
+        File file = null;
         if(MapRSession.getInstance().getMode() == MapRSession.Mode.ONLINE)
             file = FileSystem.copyFromRemotePath(task.getTaskInput().getRemoteDataPath());
         else {
-            file = task.getTaskInput().getLocalFile();
+            try {
+                file = new File(task.getTaskInput().getLocalFile().getPath());
+            } catch (Exception e)   {
+                System.out.println("Task was " + task.getType());
+            }
         }
         mapper.map(file, this);
         finishTask(task);

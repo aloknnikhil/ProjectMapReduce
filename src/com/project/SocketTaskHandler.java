@@ -76,7 +76,10 @@ public class SocketTaskHandler {
     }
 
     public static void dispatchTask(final Task task) {
-        LogFile.writeToLog("Sending task to slave " + task.getCurrentExecutorID());
+
+        if(task.getType() != Task.Type.ACK && task.getType() != Task.Type.HEARTBEAT)
+            LogFile.writeToLog("Sending task to slave " + task.getCurrentExecutorID());
+
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -168,7 +171,7 @@ public class SocketTaskHandler {
                     Thread.sleep(2048);
                     if (getInstance().pendingHeartBeats.get(slaveID) > MAX_RETRY_COUNT) {
                         getInstance().offlineSlaves.add(slaveID);
-                        MapRSession.getInstance().getActiveNode().getJobTracker().rescheduleTasksFrom(slaveID);
+                        MapRSession.getInstance().getActiveNode().getJobTracker().acknowledgeFailure();
                         Thread.currentThread().interrupt();
                     }
 
@@ -225,7 +228,11 @@ public class SocketTaskHandler {
                             break;
 
                         case SLAVE:
-                            task = (Task) objectInputStream.readUnshared();
+                            try {
+                                task = (Task) objectInputStream.readUnshared();
+                            } catch (Exception e)   {
+                                continue;
+                            }
                             switch (task.getStatus()) {
                                 case INITIALIZED:
                                     if (task.getType() == Task.Type.MAP) {
