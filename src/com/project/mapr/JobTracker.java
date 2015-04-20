@@ -1,5 +1,6 @@
 package com.project.mapr;
 
+import com.project.MapRSession;
 import com.project.ResourceManager;
 import com.project.SocketTaskHandler;
 import com.project.storage.FileSystem;
@@ -138,6 +139,7 @@ public class JobTracker implements Serializable {
 
     public void beginTasks() {
         HashMap<Integer, Queue<Task>> pendingTasks = isMapPhase ? pendingMapTasks : pendingReduceTasks;
+
         LogFile.writeToLog("Making a copy of the assigned tasks");
         backupPendingTasks = new HashMap<>(pendingTasks);
 
@@ -145,9 +147,18 @@ public class JobTracker implements Serializable {
             if (entry.getValue().size() != 0) {
                 runningTasksCount++;
                 new Thread(new Runnable() {
+                    Task pendingTask;
+                    String filePath;
                     @Override
                     public void run() {
-                        SocketTaskHandler.dispatchTask(Task.convertToRemoteInput(entry.getValue().remove()));
+                        pendingTask = entry.getValue().remove();
+                        if(MapRSession.getInstance().getMode() == MapRSession.Mode.ONLINE)
+                            SocketTaskHandler.dispatchTask(Task.convertToRemoteInput(pendingTask));
+                        else    {
+                            filePath = pendingTask.getTaskInput().getLocalFile().getAbsolutePath();
+                            filePath = filePath.substring(filePath.lastIndexOf('/') + 1);
+                            pendingTask.setTaskInput(new Input(new File(filePath)));
+                        }
                     }
                 }).start();
             }

@@ -15,7 +15,13 @@ import java.util.StringTokenizer;
  */
 public class MapRSession {
 
+    public enum Mode {
+        OFFLINE,
+        ONLINE
+    }
+
     private static MapRSession mapRSessionInstance;
+    private Mode mode;
     private File sessionDir;
     private Input input;
     private Node activeNode;
@@ -42,6 +48,7 @@ public class MapRSession {
         sessionDir.mkdir();
         LogFile.writeToLog("Reading input from folder /input");
         input = new Input(new File("out/input"));
+        mode = Mode.OFFLINE;
     }
 
     private void configureActiveNode() {
@@ -115,6 +122,10 @@ public class MapRSession {
 
     public String getKafkaHost() {
         return kafkaHost;
+    }
+
+    public Mode getMode() {
+        return mode;
     }
 
     public static void exit(int status) {

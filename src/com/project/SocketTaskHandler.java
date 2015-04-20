@@ -58,7 +58,7 @@ public class SocketTaskHandler {
                         socket.setReceiveBufferSize(64 * 1024);
                         masterSocket = new ObjectOutputStream(
                                 new BufferedOutputStream(socket.getOutputStream()));
-                        serverInstance = new Thread(new ServerProcess(socket));
+                        serverInstance = new Thread(new ServerProcess(socket, 0));
                         serverInstance.start();
                         LogFile.writeToLog("Connected to master successfully");
                         LogFile.writeToLog("Terminating connection listener. We already have one master.");
@@ -116,7 +116,7 @@ public class SocketTaskHandler {
                 socket.setReceiveBufferSize(64 * 1024);
                 getInstance().connectedSlaves.put(slaveID, new ObjectOutputStream(
                         new BufferedOutputStream(socket.getOutputStream())));
-                new Thread(new ServerProcess(socket)).start();
+                new Thread(new ServerProcess(socket, slaveID)).start();
                 redo = false;
             } catch (java.net.SocketException e) {
                 try {
@@ -165,7 +165,7 @@ public class SocketTaskHandler {
 
             try {
                 while (true) {
-                    Thread.sleep(5000);
+                    Thread.sleep(2048);
                     if (getInstance().pendingHeartBeats.get(slaveID) > MAX_RETRY_COUNT) {
                         getInstance().offlineSlaves.add(slaveID);
                         MapRSession.getInstance().getActiveNode().getJobTracker().rescheduleTasksFrom(slaveID);
@@ -177,14 +177,12 @@ public class SocketTaskHandler {
                     task.setStatus(Task.Status.INITIALIZED);
                     task.setCurrentExecutorID(slaveID);
                     getInstance().pendingHeartBeats.put(slaveID, getInstance().pendingHeartBeats.get(slaveID) + 1);
-                    if(writeTaskToSocket(getInstance().connectedSlaves.get(slaveID), task))
-                        System.out.println("Beat for " + slaveID);
-                    else    {
+                    if(!writeTaskToSocket(getInstance().connectedSlaves.get(slaveID), task))  {
                         getInstance().pendingHeartBeats.put(slaveID, MAX_RETRY_COUNT + 1);
                     }
                 }
             } catch (InterruptedException e) {
-                System.out.println("Slave " + slaveID + " has died :(");
+                LogFile.writeToLog("Slave " + slaveID + " has died");
             }
         }
     }
@@ -192,12 +190,14 @@ public class SocketTaskHandler {
     private static class ServerProcess implements Runnable {
 
         Socket socket;
+        Integer slaveID;
         ObjectInputStream objectInputStream;
         BufferedInputStream bufferedInputStream;
         Task task = new Task();
 
-        private ServerProcess(Socket socket) throws IOException {
+        private ServerProcess(Socket socket, Integer slaveID) throws IOException {
             this.socket = socket;
+            this.slaveID = slaveID;
         }
 
         @Override
@@ -266,7 +266,10 @@ public class SocketTaskHandler {
                     }
                 }
             } catch (IOException e) {
-                System.out.println("A slave has failed to communicate");
+                if(MapRSession.getInstance().getActiveNode().getType() == Node.Type.MASTER)
+                    LogFile.writeToLog("Slave " + slaveID + " failed to communicate");
+                else
+                    LogFile.writeToLog("Connection to master lost");
             } catch (ClassNotFoundException e) {
                 e.printStackTrace();
             }
