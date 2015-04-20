@@ -80,7 +80,7 @@ public class SocketTaskHandler {
             @Override
             public void run() {
                 ObjectOutputStream nodeSocket;
-                if(MapRSession.getInstance().getActiveNode().getType() == Node.Type.MASTER)
+                if (MapRSession.getInstance().getActiveNode().getType() == Node.Type.MASTER)
                     nodeSocket = getInstance().connectedSlaves.get(task.getCurrentExecutorID());
                 else
                     nodeSocket = getInstance().masterSocket;
@@ -134,7 +134,7 @@ public class SocketTaskHandler {
         LogFile.writeToLog("Started HeartBeat instance for slave " + slaveID);
     }
 
-    private static void startHeartBeat(Integer slaveID)    {
+    private static void startHeartBeat(Integer slaveID) {
         new Thread(new HeartBeatRunnable(slaveID)).start();
     }
 
@@ -146,16 +146,16 @@ public class SocketTaskHandler {
             return true;
         } catch (IOException e) {
             return false;
-        } catch (NullPointerException e)    {
+        } catch (NullPointerException e) {
             return false;
         }
     }
 
-    private static class HeartBeatRunnable implements Runnable  {
+    private static class HeartBeatRunnable implements Runnable {
 
         Integer slaveID;
 
-        private HeartBeatRunnable(Integer slaveID)  {
+        private HeartBeatRunnable(Integer slaveID) {
             this.slaveID = slaveID;
         }
 
@@ -166,7 +166,7 @@ public class SocketTaskHandler {
 
             try {
                 while (true) {
-                    Thread.sleep(2048);
+                    Thread.sleep(4096);
                     if (getInstance().pendingHeartBeats.get(slaveID) > MAX_RETRY_COUNT) {
                         getInstance().offlineSlaves.add(slaveID);
                         MapRSession.getInstance().getActiveNode().getJobTracker().acknowledgeFailure(slaveID);
@@ -178,7 +178,7 @@ public class SocketTaskHandler {
                     task.setStatus(Task.Status.INITIALIZED);
                     task.setCurrentExecutorID(slaveID);
                     getInstance().pendingHeartBeats.put(slaveID, getInstance().pendingHeartBeats.get(slaveID) + 1);
-                    if(!writeTaskToSocket(getInstance().connectedSlaves.get(slaveID), task))  {
+                    if (!writeTaskToSocket(getInstance().connectedSlaves.get(slaveID), task)) {
                         getInstance().pendingHeartBeats.put(slaveID, MAX_RETRY_COUNT + 1);
                     }
                 }
@@ -210,73 +210,76 @@ public class SocketTaskHandler {
                 while (true) {
                     switch (MapRSession.getInstance().getActiveNode().getType()) {
                         case MASTER:
-                            synchronized (task) {
-                                task = (Task) objectInputStream.readUnshared();
-                                if (task.getType() == Task.Type.ACK) {
-                                    getInstance().pendingHeartBeats.put(task.getCurrentExecutorID(), 0);
-                                } else {
-                                    switch (task.getStatus()) {
-                                        case END:
-                                        case COMPLETE:
-                                            new Thread(new TaskOutputProcessor(task)).start();
-                                            break;
+                            try {
+                                synchronized (task) {
+                                    task = (Task) objectInputStream.readUnshared();
+                                    if (task.getType() == Task.Type.ACK) {
+                                        getInstance().pendingHeartBeats.put(task.getCurrentExecutorID(), 0);
+                                    } else {
+                                        switch (task.getStatus()) {
+                                            case END:
+                                            case COMPLETE:
+                                                new Thread(new TaskOutputProcessor(task)).start();
+                                                break;
+                                        }
                                     }
                                 }
+                            } catch (Exception e)   {
+                                continue;
                             }
                             break;
 
                         case SLAVE:
                             try {
                                 task = (Task) objectInputStream.readUnshared();
-                            } catch (Exception e)   {
-                                continue;
-                            }
-                            switch (task.getStatus()) {
-                                case INITIALIZED:
-                                    if (task.getType() == Task.Type.MAP) {
-                                        task.setStatus(Task.Status.RUNNING);
-                                        SocketTaskHandler.modifyTask(task);
-                                        new Thread(new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                MapRSession.getInstance().getActiveNode().getTaskTracker()
-                                                        .runMap(task);
-                                            }
-                                        }).start();
-                                    } else if (task.getType() == Task.Type.REDUCE) {
-                                        task.setStatus(Task.Status.RUNNING);
-                                        SocketTaskHandler.modifyTask(task);
-                                        new Thread(new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                MapRSession.getInstance().getActiveNode().getTaskTracker()
-                                                        .runReduce(task);
-                                            }
-                                        }).start();
-                                    } else if (task.getType() == Task.Type.HEARTBEAT) {
-                                        task.setType(Task.Type.ACK);
-                                        modifyTask(task);
-                                    }
-                                    break;
 
-                                case COMPLETE:
-                                    new Thread(new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            MapRSession.getInstance().getActiveNode().getTaskTracker()
-                                                    .getPhaseOutput(task);
+                                switch (task.getStatus()) {
+                                    case INITIALIZED:
+                                        if (task.getType() == Task.Type.MAP) {
+                                            task.setStatus(Task.Status.RUNNING);
+                                            SocketTaskHandler.modifyTask(task);
+                                            new Thread(new Runnable() {
+                                                @Override
+                                                public void run() {
+                                                    MapRSession.getInstance().getActiveNode().getTaskTracker()
+                                                            .runMap(task);
+                                                }
+                                            }).start();
+                                        } else if (task.getType() == Task.Type.REDUCE) {
+                                            task.setStatus(Task.Status.RUNNING);
+                                            SocketTaskHandler.modifyTask(task);
+                                            new Thread(new Runnable() {
+                                                @Override
+                                                public void run() {
+                                                    MapRSession.getInstance().getActiveNode().getTaskTracker()
+                                                            .runReduce(task);
+                                                }
+                                            }).start();
+                                        } else if (task.getType() == Task.Type.HEARTBEAT) {
+                                            task.setType(Task.Type.ACK);
+                                            modifyTask(task);
                                         }
-                                    }).start();
+                                        break;
+
+                                    case COMPLETE:
+                                        new Thread(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                MapRSession.getInstance().getActiveNode().getTaskTracker()
+                                                        .getPhaseOutput(task);
+                                            }
+                                        }).start();
+                                }
+                            } catch (Exception e) {
+                                continue;
                             }
                     }
                 }
             } catch (IOException e) {
-                if(MapRSession.getInstance().getActiveNode().getType() == Node.Type.MASTER)
+                if (MapRSession.getInstance().getActiveNode().getType() == Node.Type.MASTER)
                     LogFile.writeToLog("Slave " + slaveID + " failed to communicate");
                 else
                     LogFile.writeToLog("Connection to master lost");
-            } catch (ClassNotFoundException e) {
-                e.printStackTrace();
             }
         }
     }
@@ -292,7 +295,7 @@ public class SocketTaskHandler {
         @Override
         public void run() {
             MapRSession.getInstance().getActiveNode().getJobTracker().collectTaskOutput(task);
-            if(task.getStatus() == Task.Status.COMPLETE)
+            if (task.getStatus() == Task.Status.COMPLETE)
                 MapRSession.getInstance().getActiveNode().getJobTracker().markTaskComplete(task);
         }
     }

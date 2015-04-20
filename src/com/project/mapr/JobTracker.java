@@ -164,11 +164,6 @@ public class JobTracker implements Serializable {
         Task pendingTask;
         Queue<Task> taskQueue;
 
-        if (isMapPhase)
-            totalMapTasks = 0;
-        else
-            totalReduceTasks = 0;
-
         runningTasksCount.incrementAndGet();
         LogFile.writeToLog("Rescheduling slave " + slaveID + "'s tasks");
         while (deadTasks.hasNext()) {
@@ -233,8 +228,12 @@ public class JobTracker implements Serializable {
             LogFile.writeToLog("Reduce progress: " + (completedTasksCount.get() * 100) / totalReduceTasks
                     + "% Pending tasks: " + (totalReduceTasks - completedTasksCount.get()));
 
-        LogFile.writeToLog("Running Tasks: " + runningTasksCount.get());
         if (isMapPhase && (getRunningTasksCount() == 0)) {
+            if (isMapPhase)
+                totalMapTasks = 0;
+            else
+                totalReduceTasks = 0;
+
             if (SocketTaskHandler.getInstance().offlineSlaves.size() > 0) {
                 for (Integer slave : SocketTaskHandler.getInstance().offlineSlaves) {
                     if (!acknowledgedFailedSlaves.contains(slave)) {
