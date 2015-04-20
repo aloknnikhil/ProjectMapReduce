@@ -15,6 +15,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 public class JobTracker implements Serializable {
 
     private List<Task> scheduledMapTasks;
+    private HashMap<Integer, Queue<Task>> backupPendingTasks;
     private HashMap<Integer, Queue<Task>> pendingReduceTasks;
     private HashMap<Integer, Queue<Task>> pendingMapTasks;
     private List<Integer> pendingResults;
@@ -101,7 +102,7 @@ public class JobTracker implements Serializable {
         for (Task pendingTask : scheduledMapTasks) {
             do {
                 if (allSlavesDead) {
-                    System.out.println("All slaves offline! :o");
+                    LogFile.writeToLog("All slaves offline! :o");
                     return;
                 }
 
@@ -137,6 +138,8 @@ public class JobTracker implements Serializable {
 
     public void beginTasks() {
         HashMap<Integer, Queue<Task>> pendingTasks = isMapPhase ? pendingMapTasks : pendingReduceTasks;
+        LogFile.writeToLog("Making a copy of the assigned tasks");
+        backupPendingTasks = new HashMap<>(pendingTasks);
 
         for (final Map.Entry<Integer, Queue<Task>> entry : pendingTasks.entrySet()) {
             if (entry.getValue().size() != 0) {
@@ -152,6 +155,51 @@ public class JobTracker implements Serializable {
     }
 
     public void rescheduleTasksFrom(Integer slaveID) {
+        HashMap<Integer, Queue<Task>> pendingTasks = isMapPhase ? pendingMapTasks : pendingReduceTasks;
+        Iterator<Task> deadTasks = backupPendingTasks.get(slaveID).iterator();
+        Iterator nodeIterator = activeSlaves.iterator();
+        Node temp = null;
+        Task pendingTask;
+        Queue<Task> taskQueue;
+        boolean allSlavesDead = false;
+        int count = 0;
+
+        while (deadTasks.hasNext()) {
+            pendingTask = deadTasks.next();
+            do {
+                if (allSlavesDead) {
+                    LogFile.writeToLog("All slaves offline! :o");
+                    return;
+                }
+
+                if (nodeIterator.hasNext()) {
+                    temp = (Node) nodeIterator.next();
+                } else {
+                    nodeIterator = activeSlaves.iterator();
+                    count++;
+                }
+
+                if (count == 2) {
+                    allSlavesDead = true;
+                }
+            } while (SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID()));
+
+            allSlavesDead = false;
+            count = 0;
+
+            synchronized (pendingTasks) {
+                if (!SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID())) {
+                    pendingTask.setCurrentExecutorID(temp.getNodeID());
+                    if (pendingMapTasks.containsKey(temp.getNodeID())) {
+                        pendingMapTasks.get(temp.getNodeID()).add(pendingTask);
+                    } else {
+                        taskQueue = new LinkedBlockingQueue<>();
+                        taskQueue.add(pendingTask);
+                        pendingMapTasks.put(temp.getNodeID(), taskQueue);
+                    }
+                }
+            }
+        }
     }
 
     public void markTaskComplete(Task task) {
@@ -166,8 +214,7 @@ public class JobTracker implements Serializable {
             if (pendingTasks.get(task.getCurrentExecutorID()).size() > 0) {
                 runningTasksCount++;
                 SocketTaskHandler.modifyTask(Task.convertToRemoteInput(
-                        pendingTasks.get(
-                                task.getCurrentExecutorID()).remove()));
+                        pendingTasks.get(task.getCurrentExecutorID()).remove()));
             }
 
             if(task.getType() == Task.Type.MAP)
