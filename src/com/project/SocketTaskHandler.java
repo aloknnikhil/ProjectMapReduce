@@ -76,10 +76,6 @@ public class SocketTaskHandler {
     }
 
     public static void dispatchTask(final Task task) {
-
-        if(task.getType() != Task.Type.ACK && task.getType() != Task.Type.HEARTBEAT)
-            LogFile.writeToLog("Sending task to slave " + task.getCurrentExecutorID());
-
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -149,6 +145,8 @@ public class SocketTaskHandler {
             socket.flush();
             return true;
         } catch (IOException e) {
+            return false;
+        } catch (NullPointerException e)    {
             return false;
         }
     }

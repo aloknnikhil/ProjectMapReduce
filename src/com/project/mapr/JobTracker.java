@@ -20,6 +20,7 @@ public class JobTracker implements Serializable {
     private HashMap<Integer, Queue<Task>> backupPendingTasks;
     private HashMap<Integer, Queue<Task>> pendingReduceTasks;
     private HashMap<Integer, Queue<Task>> pendingMapTasks;
+    private HashMap<Integer, Integer> redirectionIndex;
     private List<Integer> pendingResults;
     public List<Node> activeSlaves;
     private List<Integer> acknowledgedFailedSlaves;
@@ -40,6 +41,7 @@ public class JobTracker implements Serializable {
         pendingReduceTasks = new HashMap<>();
         pendingResults = new ArrayList<>();
         acknowledgedFailedSlaves = new ArrayList<>();
+        redirectionIndex = new HashMap<>();
         jobInput = inputFile;
         jobOutput = new Output(new File("results.txt"));
         if (!intermediateDir.exists())
@@ -142,10 +144,6 @@ public class JobTracker implements Serializable {
                     @Override
                     public void run() {
                         pendingTask = entry.getValue().remove();
-
-                        if (acknowledgedFailedSlaves.contains(pendingTask.getCurrentExecutorID()))
-                            pendingTask.setCurrentExecutorID(getAliveSlave().getNodeID());
-
                         if (!isMapPhase)
                             SocketTaskHandler.dispatchTask(Task.convertToRemoteInput(pendingTask));
                         else if (MapRSession.getInstance().getMode() == MapRSession.Mode.ONLINE && isMapPhase)
@@ -290,6 +288,7 @@ public class JobTracker implements Serializable {
     public void collectTaskOutput(final Task task) {
         Task reduceTask;
         Queue<Task> taskQueue;
+        Integer slave;
 
         if (task.getStatus() == Task.Status.COMPLETE) {
             synchronized (pendingResults) {
@@ -301,22 +300,31 @@ public class JobTracker implements Serializable {
             if (task.getType() == Task.Type.MAP) {
                 for (Map.Entry<Integer, String> partitionEntry : task.getReducePartitionIDs().entrySet()) {
                     reduceTask = new Task();
-                    reduceTask.setCurrentExecutorID(activeSlaves.get(partitionEntry.getKey()).getNodeID());
+                    try {
+                        slave = activeSlaves.get(partitionEntry.getKey()).getNodeID();
+                    } catch (ClassCastException e)  {
+                        continue;
+                    }
+                    if(acknowledgedFailedSlaves.contains(slave)) {
+                        if(!redirectionIndex.containsKey(slave))
+                            redirectionIndex.put(slave, getAliveSlave().getNodeID());
+                        slave = redirectionIndex.get(slave);
+                    }
+                    reduceTask.setCurrentExecutorID(slave);
                     reduceTask.setTaskInput(new Input(partitionEntry.getValue()));
                     reduceTask.setType(Task.Type.REDUCE);
                     reduceTask.setStatus(Task.Status.INITIALIZED);
                     totalReduceTasks++;
 
                     synchronized (pendingReduceTasks) {
-                        if (pendingReduceTasks.containsKey(activeSlaves.get(partitionEntry.getKey()).getNodeID()))
-                            pendingReduceTasks.get(activeSlaves.get(partitionEntry.getKey()).getNodeID()).add(reduceTask);
+                        if (pendingReduceTasks.containsKey(slave))
+                            pendingReduceTasks.get(slave).add(reduceTask);
                         else {
                             taskQueue = new LinkedBlockingQueue<>();
                             taskQueue.add(reduceTask);
-                            pendingReduceTasks.put(activeSlaves.get(partitionEntry.getKey()).getNodeID(), taskQueue);
+                            pendingReduceTasks.put(slave, taskQueue);
                         }
 
-                        LogFile.writeToLog("Pending Results: " + pendingResults.size());
                         if (pendingResults.size() == 0 && isMapPhase) {
                             isMapPhase = false;
                             beginTasks();
