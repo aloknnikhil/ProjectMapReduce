@@ -1,7 +1,5 @@
 package com.project.application;
 
-import javafx.util.Pair;
-
 import java.io.File;
 
 /**

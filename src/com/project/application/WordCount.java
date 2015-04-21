@@ -1,7 +1,5 @@
 package com.project.application;
 
-import javafx.util.Pair;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -22,7 +20,7 @@ public class WordCount implements Mapper, Reducer, Serializable {
             while ((temp = bufferedReader.readLine()) != null)  {
                 stringTokenizer = new StringTokenizer(temp, " ");
                 while (stringTokenizer.hasMoreTokens()) {
-                    outputCollector.collect(new Pair<>(stringTokenizer.nextToken(), 1));
+                    outputCollector.collect(stringTokenizer.nextToken(), 1);
                 }
             }
         } catch (java.io.IOException e) {
@@ -37,6 +35,6 @@ public class WordCount implements Mapper, Reducer, Serializable {
             result += values.next();
         }
 
-        outputCollector.collect(new Pair<>(key, result));
+        outputCollector.collect(key, result);
     }
 }

@@ -11,11 +11,9 @@ import com.project.storage.FileSystem;
 import com.project.utils.Node;
 import com.project.utils.Output;
 import com.project.utils.Task;
-import javafx.util.Pair;
 
 import java.io.*;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
@@ -85,8 +83,8 @@ public class TaskTracker implements OutputCollector, Serializable {
     }
 
     @Override
-    public void collect(Pair<String, Integer> keyValuePair) {
-        int partitionID = ResourceManager.getPartitionForKey(keyValuePair.getKey());
+    public void collect(String key, Integer value) {
+        int partitionID = ResourceManager.getPartitionForKey(key);
         try {
             if (currentTask.getType() == Task.Type.MAP) {
                 intermediateFile = new File(MapRSession.getRootDir(), currentTask.getType() + "_"
@@ -97,7 +95,7 @@ public class TaskTracker implements OutputCollector, Serializable {
             }
 
             PrintWriter printWriter = new PrintWriter(new FileWriter(intermediateFile, true));
-            printWriter.println(keyValuePair.getKey() + ":" + keyValuePair.getValue());
+            printWriter.println(key + ":" + value);
             printWriter.flush();
             printWriter.close();
         } catch (IOException e) {
