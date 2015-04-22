@@ -23,6 +23,7 @@ public class TaskTracker implements OutputCollector, Serializable {
     private Mapper mapper;
     private Reducer reducer;
     private File intermediateFile;
+    private HashMap<String, Integer> mapKeyValuePairs;
     private HashMap<String, List<Integer>> reduceKeyValuePairs;
     private HashMap<Integer, String> destinationPartitions;
     private Task currentTask;
@@ -30,6 +31,7 @@ public class TaskTracker implements OutputCollector, Serializable {
     public TaskTracker() {
         mapper = new WordCount();
         reducer = new WordCount();
+        mapKeyValuePairs = new HashMap<>();
         reduceKeyValuePairs = new HashMap<>();
         destinationPartitions = new HashMap<>();
     }
@@ -84,22 +86,36 @@ public class TaskTracker implements OutputCollector, Serializable {
 
     @Override
     public void collect(String key, Integer value) {
-        int partitionID = ResourceManager.getPartitionForKey(key);
-        try {
-            if (currentTask.getType() == Task.Type.MAP) {
-                intermediateFile = new File(MapRSession.getRootDir(), currentTask.getType() + "_"
-                        + currentTask.getCurrentExecutorID() + "_"
-                        + partitionID);
-                if (!destinationPartitions.containsKey(partitionID))
-                    destinationPartitions.put(partitionID, intermediateFile.getAbsolutePath());
-            }
+        if(currentTask.getType() == Task.Type.MAP) {
+            if (mapKeyValuePairs.containsKey(key))
+                mapKeyValuePairs.put(key, mapKeyValuePairs.get(key) + value);
+            else
+                mapKeyValuePairs.put(key, value);
+        } else {
+            reduceKeyValuePairs.get(key).clear();
+            reduceKeyValuePairs.get(key).add(value);
+        }
+    }
 
-            PrintWriter printWriter = new PrintWriter(new FileWriter(intermediateFile, true));
-            printWriter.println(key + ":" + value);
-            printWriter.flush();
-            printWriter.close();
-        } catch (IOException e) {
-            e.printStackTrace();
+    private void combineOutput() {
+        for (Map.Entry<String, Integer> entry : mapKeyValuePairs.entrySet()) {
+            int partitionID = ResourceManager.getPartitionForKey(entry.getKey());
+            try {
+                if (currentTask.getType() == Task.Type.MAP) {
+                    intermediateFile = new File(MapRSession.getRootDir(), currentTask.getType() + "_"
+                            + currentTask.getCurrentExecutorID() + "_"
+                            + partitionID);
+                    if (!destinationPartitions.containsKey(partitionID))
+                        destinationPartitions.put(partitionID, intermediateFile.getAbsolutePath());
+                }
+
+                PrintWriter printWriter = new PrintWriter(new FileWriter(intermediateFile, true));
+                printWriter.println(entry.getKey() + ":" + entry.getValue());
+                printWriter.flush();
+                printWriter.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -115,7 +131,7 @@ public class TaskTracker implements OutputCollector, Serializable {
             ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                     Node.Status.BUSY);
             task.setStatus(Task.Status.END);
-
+            combineOutput();
             if (task.getType() == Task.Type.MAP) {
                 for (Map.Entry<Integer, String> entry : destinationPartitions.entrySet()) {
                     destinationPartitions.put(entry.getKey(),
