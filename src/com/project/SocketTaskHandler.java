@@ -168,7 +168,8 @@ public class SocketTaskHandler {
                 while (true) {
                     Thread.sleep(4096);
                     if (getInstance().pendingHeartBeats.get(slaveID) > MAX_RETRY_COUNT) {
-                        getInstance().offlineSlaves.add(slaveID);
+                        if (!getInstance().offlineSlaves.contains(slaveID))
+                            getInstance().offlineSlaves.add(slaveID);
                         MapRSession.getInstance().getActiveNode().getJobTracker().acknowledgeFailure(slaveID);
                         Thread.currentThread().interrupt();
                     }
@@ -183,7 +184,6 @@ public class SocketTaskHandler {
                     }
                 }
             } catch (InterruptedException e) {
-                LogFile.writeToLog("Slave " + slaveID + " has died");
             }
         }
     }
@@ -207,6 +207,7 @@ public class SocketTaskHandler {
             try {
                 bufferedInputStream = new BufferedInputStream(socket.getInputStream());
                 objectInputStream = new ObjectInputStream(bufferedInputStream);
+                loop:
                 while (true) {
                     switch (MapRSession.getInstance().getActiveNode().getType()) {
                         case MASTER:
@@ -224,8 +225,9 @@ public class SocketTaskHandler {
                                         }
                                     }
                                 }
-                            } catch (Exception e)   {
-                                continue;
+                            } catch (Exception e) {
+                                LogFile.writeToLog("Slave " + slaveID + " failed to communicate");
+                                break loop;
                             }
                             break;
 
@@ -271,7 +273,9 @@ public class SocketTaskHandler {
                                         }).start();
                                 }
                             } catch (Exception e) {
-                                continue;
+                                LogFile.writeToLog("Connection to master lost");
+                                getInstance().offlineSlaves.add(slaveID);
+                                break loop;
                             }
                     }
                 }
