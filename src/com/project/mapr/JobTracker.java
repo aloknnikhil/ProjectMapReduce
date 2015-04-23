@@ -2,7 +2,7 @@ package com.project.mapr;
 
 import com.project.MapRSession;
 import com.project.ResourceManager;
-import com.project.SocketTaskHandler;
+import com.project.TaskDispatchManager;
 import com.project.storage.FileSystem;
 import com.project.utils.*;
 
@@ -52,7 +52,7 @@ public class JobTracker implements Serializable {
 
     public void start() {
         checkForSlaves();
-        SocketTaskHandler.getInstance().connectToSlaves();
+        TaskDispatchManager.getInstance().connectToSlaves();
         LogFile.writeToLog("All slaves connected");
         startTime = System.currentTimeMillis();
         LogFile.writeToLog("Started partitioning map tasks");
@@ -110,7 +110,7 @@ public class JobTracker implements Serializable {
         for (Task pendingTask : scheduledMapTasks) {
             temp = getAliveSlave();
 
-            if (!SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID())) {
+            if (!TaskDispatchManager.getInstance().offlineSlaves.contains(temp.getNodeID())) {
                 pendingTask.setCurrentExecutorID(temp.getNodeID());
                 if (pendingMapTasks.containsKey(temp.getNodeID())) {
                     pendingMapTasks.get(temp.getNodeID()).add(pendingTask);
@@ -147,11 +147,11 @@ public class JobTracker implements Serializable {
                     public void run() {
                         pendingTask = entry.getValue().remove();
                         if (!isMapPhase)
-                            SocketTaskHandler.dispatchTask(Task.convertToRemoteInput(pendingTask));
+                            TaskDispatchManager.dispatchTask(Task.convertToRemoteInput(pendingTask));
                         else if (MapRSession.getInstance().getMode() == MapRSession.Mode.ONLINE && isMapPhase)
-                            SocketTaskHandler.dispatchTask(Task.convertToRemoteInput(pendingTask));
+                            TaskDispatchManager.dispatchTask(Task.convertToRemoteInput(pendingTask));
                         else {
-                            SocketTaskHandler.dispatchTask(pendingTask);
+                            TaskDispatchManager.dispatchTask(pendingTask);
                         }
                     }
                 }).start();
@@ -171,7 +171,7 @@ public class JobTracker implements Serializable {
         while (deadTasks.hasNext()) {
             pendingTask = deadTasks.next();
             temp = getAliveSlave();
-            if (!SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID())) {
+            if (!TaskDispatchManager.getInstance().offlineSlaves.contains(temp.getNodeID())) {
                 pendingTask.setCurrentExecutorID(temp.getNodeID());
                 completedTasksCount.decrementAndGet();
                 if (isMapPhase)
@@ -214,11 +214,11 @@ public class JobTracker implements Serializable {
 
                 pendingTask = pendingTasks.get(task.getCurrentExecutorID()).remove();
                 if (!isMapPhase)
-                    SocketTaskHandler.dispatchTask(Task.convertToRemoteInput(pendingTask));
+                    TaskDispatchManager.dispatchTask(Task.convertToRemoteInput(pendingTask));
                 else if (MapRSession.getInstance().getMode() == MapRSession.Mode.ONLINE && isMapPhase)
-                    SocketTaskHandler.dispatchTask(Task.convertToRemoteInput(pendingTask));
+                    TaskDispatchManager.dispatchTask(Task.convertToRemoteInput(pendingTask));
                 else {
-                    SocketTaskHandler.dispatchTask(pendingTask);
+                    TaskDispatchManager.dispatchTask(pendingTask);
                 }
             }
         }
@@ -236,8 +236,8 @@ public class JobTracker implements Serializable {
             else
                 totalReduceTasks = 0;
 
-            if (SocketTaskHandler.getInstance().offlineSlaves.size() > 0) {
-                for (Integer slave : SocketTaskHandler.getInstance().offlineSlaves) {
+            if (TaskDispatchManager.getInstance().offlineSlaves.size() > 0) {
+                for (Integer slave : TaskDispatchManager.getInstance().offlineSlaves) {
                     if (!acknowledgedFailedSlaves.contains(slave)) {
                         rescheduleTasksFrom(slave);
                         acknowledgedFailedSlaves.add(slave);
@@ -266,7 +266,7 @@ public class JobTracker implements Serializable {
             tempTask.setType(type);
             tempTask.setStatus(Task.Status.COMPLETE);
             tempTask.setCurrentExecutorID(slave);
-            SocketTaskHandler.dispatchTask(tempTask);
+            TaskDispatchManager.dispatchTask(tempTask);
         }
     }
 
@@ -293,7 +293,7 @@ public class JobTracker implements Serializable {
 
         if (task.getStatus() == Task.Status.COMPLETE) {
             synchronized (pendingResults) {
-                if (!SocketTaskHandler.getInstance().offlineSlaves.contains(task.getCurrentExecutorID())
+                if (!TaskDispatchManager.getInstance().offlineSlaves.contains(task.getCurrentExecutorID())
                         && !pendingResults.contains(task.getCurrentExecutorID()))
                     pendingResults.add(task.getCurrentExecutorID());
             }
@@ -383,7 +383,7 @@ public class JobTracker implements Serializable {
                 nextSlave = nextSlave % activeSlaves.size();
             temp = activeSlaves.get(nextSlave);
             nextSlave++;
-        } while (SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID()));
+        } while (TaskDispatchManager.getInstance().offlineSlaves.contains(temp.getNodeID()));
 
         return temp;
     }

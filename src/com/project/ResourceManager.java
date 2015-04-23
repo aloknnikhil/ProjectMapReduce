@@ -103,7 +103,7 @@ public class ResourceManager {
             case SLAVE:
                 createZNode(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH + IDLE_SLAVES_PATH + "/" + node.getNodeID(),
                         Node.serialize(node), CreateMode.EPHEMERAL);
-                SocketTaskHandler.getInstance().setupSocketListener();
+                TaskDispatchManager.getInstance().setupSocketListener();
                 break;
         }
     }

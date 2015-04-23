@@ -2,11 +2,8 @@ package com.project.utils;
 
 import com.project.MapRSession;
 import com.project.ResourceManager;
-import com.project.SocketTaskHandler;
-import com.project.TaskHandler;
 import com.project.mapr.JobTracker;
 import com.project.mapr.TaskTracker;
-import com.project.storage.FileSystem;
 import org.I0Itec.zkclient.IZkDataListener;
 
 import java.io.*;
@@ -14,7 +11,7 @@ import java.io.*;
 /**
  * Created by alok on 4/11/15
  */
-public class Node implements Serializable, IZkDataListener, TaskChangeListener {
+public class Node implements Serializable, IZkDataListener {
 
     public enum Type {
         MASTER,
@@ -113,11 +110,6 @@ public class Node implements Serializable, IZkDataListener, TaskChangeListener {
 
     @Override
     public void handleDataDeleted(String s) throws Exception {
-
-    }
-
-    @Override
-    public void onTaskChanged(final Task task) {
 
     }
 }

@@ -12,9 +12,9 @@ import java.util.*;
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
  */
-public class SocketTaskHandler {
+public class TaskDispatchManager {
 
-    private static SocketTaskHandler resourceManagerInstance;
+    private static TaskDispatchManager resourceManagerInstance;
     private HashMap<Integer, ObjectOutputStream> connectedSlaves;
     private HashMap<Integer, Integer> pendingHeartBeats;
     private static final int MAX_RETRY_COUNT = 10;
@@ -22,7 +22,7 @@ public class SocketTaskHandler {
     private ObjectOutputStream masterSocket;
     private Runnable dispatcherRunnable;
 
-    private SocketTaskHandler() {
+    private TaskDispatchManager() {
         connectedSlaves = new HashMap<>();
         offlineSlaves = new ArrayList<>();
         pendingHeartBeats = new HashMap<>();
@@ -93,9 +93,9 @@ public class SocketTaskHandler {
         dispatchTask(task);
     }
 
-    public static SocketTaskHandler getInstance() {
+    public static TaskDispatchManager getInstance() {
         if (resourceManagerInstance == null) {
-            resourceManagerInstance = new SocketTaskHandler();
+            resourceManagerInstance = new TaskDispatchManager();
         }
         return resourceManagerInstance;
     }
@@ -239,7 +239,7 @@ public class SocketTaskHandler {
                                     case INITIALIZED:
                                         if (task.getType() == Task.Type.MAP) {
                                             task.setStatus(Task.Status.RUNNING);
-                                            SocketTaskHandler.modifyTask(task);
+                                            TaskDispatchManager.modifyTask(task);
                                             new Thread(new Runnable() {
                                                 @Override
                                                 public void run() {
@@ -249,7 +249,7 @@ public class SocketTaskHandler {
                                             }).start();
                                         } else if (task.getType() == Task.Type.REDUCE) {
                                             task.setStatus(Task.Status.RUNNING);
-                                            SocketTaskHandler.modifyTask(task);
+                                            TaskDispatchManager.modifyTask(task);
                                             new Thread(new Runnable() {
                                                 @Override
                                                 public void run() {

@@ -2,7 +2,7 @@ package com.project.mapr;
 
 import com.project.MapRSession;
 import com.project.ResourceManager;
-import com.project.SocketTaskHandler;
+import com.project.TaskDispatchManager;
 import com.project.application.Mapper;
 import com.project.application.OutputCollector;
 import com.project.application.Reducer;
@@ -134,7 +134,7 @@ public class TaskTracker implements OutputCollector, Serializable {
 
     private void finishTask(Task task) {
         task.setStatus(Task.Status.COMPLETE);
-        SocketTaskHandler.modifyTask(task);
+        TaskDispatchManager.modifyTask(task);
         ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                 Node.Status.IDLE);
     }
@@ -160,7 +160,7 @@ public class TaskTracker implements OutputCollector, Serializable {
                 task.setTaskOutput(new Output(FileSystem.copyFromLocalFile(intermediateFile)));
             }
 
-            SocketTaskHandler.modifyTask(task);
+            TaskDispatchManager.modifyTask(task);
             ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                     Node.Status.IDLE);
         }
