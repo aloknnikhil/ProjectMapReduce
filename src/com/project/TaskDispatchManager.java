@@ -29,7 +29,7 @@ public class TaskDispatchManager {
     }
 
     public void connectToSlaves() {
-        for (Map.Entry<Integer, String> entry : ResourceManager.slaveAddresses.entrySet()) {
+        for (Map.Entry<Integer, String> entry : ConfigurationManager.slaveAddresses.entrySet()) {
             LogFile.writeToLog("Waiting to connect to slave " + entry.getKey() + " at address " + entry.getValue());
             connectTo(entry.getKey());
         }
@@ -45,7 +45,7 @@ public class TaskDispatchManager {
             @Override
             public void run() {
                 try {
-                    String hostAddress = ResourceManager.slaveAddresses.get(MapRSession.getInstance()
+                    String hostAddress = ConfigurationManager.slaveAddresses.get(MapRSession.getInstance()
                             .getActiveNode().getNodeID());
                     StringTokenizer stringTokenizer = new StringTokenizer(hostAddress, ":");
                     stringTokenizer.nextToken();
@@ -61,8 +61,6 @@ public class TaskDispatchManager {
                         serverInstance = new Thread(new ServerProcess(socket, 0));
                         serverInstance.start();
                         LogFile.writeToLog("Connected to master successfully");
-                        LogFile.writeToLog("Terminating connection listener. We already have one master.");
-                        break;
                     }
                     serverSocket.close();
 
@@ -103,7 +101,7 @@ public class TaskDispatchManager {
     public static void connectTo(Integer slaveID) {
         Socket socket;
 
-        StringTokenizer stringTokenizer = new StringTokenizer(ResourceManager.slaveAddresses.get(slaveID), ":");
+        StringTokenizer stringTokenizer = new StringTokenizer(ConfigurationManager.slaveAddresses.get(slaveID), ":");
         String hostname = stringTokenizer.nextToken();
         String port = stringTokenizer.nextToken();
         boolean redo = true;

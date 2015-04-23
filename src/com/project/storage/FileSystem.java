@@ -153,7 +153,6 @@ public class FileSystem {
                 .buildKeyspace(ThriftFamilyFactory.getInstance());
 
         context.start();
-        LogFile.writeToLog(context.getClusterName() + " connected");
         keyspace = context.getClient();
 
         // Using simple strategy
@@ -185,6 +184,10 @@ public class FileSystem {
             return Collections.singletonList(host);
         }
     };
+
+    public static void close()  {
+        getInstance().disconnectFromBackStore();
+    }
 
     private void disconnectFromBackStore() {
         context.shutdown();

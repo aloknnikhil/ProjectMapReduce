@@ -1,5 +1,6 @@
 package com.project;
 
+import com.project.storage.FileSystem;
 import com.project.utils.Input;
 import com.project.utils.LogFile;
 import com.project.utils.Node;
@@ -28,7 +29,6 @@ public class MapRSession {
     private int nodeID;
     private String inputPath;
     private String zookeeperHost = "ece-acis-dc282.acis.ufl.edu:1499";
-    private String kafkaHost = "ece-acis-dc282.acis.ufl.edu";
     private String cassandraSeeds = "ece-acis-dc281.acis.ufl.edu:9160";
     public static boolean flag = false;
 
@@ -94,12 +94,12 @@ public class MapRSession {
                     slaveID = Integer.valueOf(stringTokenizer.nextToken());
                     slaveAddress = stringTokenizer.nextToken();
                     LogFile.writeToLog("Found slave " + slaveID + " at " + slaveAddress + " in configuration file");
-                    ResourceManager.slaveAddresses.put(slaveID, slaveAddress);
+                    ConfigurationManager.slaveAddresses.put(slaveID, slaveAddress);
                 }
 
                 if(activeNode.getType() == Node.Type.MASTER) {
                     LogFile.writeToLog("Exporting configuration to Zookeeper");
-                    ResourceManager.configureResourceManager(ResourceManager.slaveAddresses);
+                    ConfigurationManager.configureResourceManager(ConfigurationManager.slaveAddresses);
                 }
             }
         } catch (IOException e) {
@@ -132,15 +132,13 @@ public class MapRSession {
         return cassandraSeeds;
     }
 
-    public String getKafkaHost() {
-        return kafkaHost;
-    }
-
     public Mode getMode() {
         return mode;
     }
 
     public static void exit(int status) {
+        ConfigurationManager.close();
+        FileSystem.close();
         System.exit(status);
     }
 }

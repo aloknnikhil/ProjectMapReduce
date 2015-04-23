@@ -1,7 +1,7 @@
 package com.project.utils;
 
 import com.project.MapRSession;
-import com.project.ResourceManager;
+import com.project.ConfigurationManager;
 import com.project.mapr.JobTracker;
 import com.project.mapr.TaskTracker;
 import org.I0Itec.zkclient.IZkDataListener;
@@ -47,7 +47,7 @@ public class Node implements Serializable, IZkDataListener {
             LogFile.writeToLog("Starting Job Tracker instance");
             jobTracker.start();
         }
-        ResourceManager.registerNode(this);
+        ConfigurationManager.registerNode(this);
 
         while (true) {
             try {

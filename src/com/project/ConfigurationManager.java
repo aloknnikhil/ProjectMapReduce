@@ -15,12 +15,12 @@ import java.util.Map;
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
  */
-public class ResourceManager {
+public class ConfigurationManager {
 
     private ZkClient zkClient;
     private static final int SESSION_TIMEOUT = 65000;
     private static List<String> cachedAllSlaves;
-    private static ResourceManager resourceManagerInstance;
+    private static ConfigurationManager configurationManagerInstance;
     public static HashMap<Integer, String> slaveAddresses = new HashMap<>();
 
     public final static String APPLICATION_ROOT_PATH = "/mapr";
@@ -31,7 +31,7 @@ public class ResourceManager {
     public final static String BUSY_SLAVES_PATH = "/busy";
     public final static String ALL_SLAVES_PATH = "/all";
 
-    private ResourceManager() {
+    private ConfigurationManager() {
         cachedAllSlaves = new ArrayList<>();
         zkClient = new ZkClient(MapRSession.getInstance().getZookeeperHost(),
                 SESSION_TIMEOUT, SESSION_TIMEOUT, new DataSerializer());
@@ -146,20 +146,15 @@ public class ResourceManager {
         }
     }
 
-    public static Integer getPartitionForKey(String key)    {
-        char ch[] = key.toCharArray();
-
-        int i, sum;
-        for (sum=0, i=0; i < key.length(); i++)
-            sum += ch[i];
-        return (sum % slaveAddresses.size());
+    public static ConfigurationManager getInstance() {
+        if (configurationManagerInstance == null) {
+            configurationManagerInstance = new ConfigurationManager();
+        }
+        return configurationManagerInstance;
     }
 
-    public static ResourceManager getInstance() {
-        if (resourceManagerInstance == null) {
-            resourceManagerInstance = new ResourceManager();
-        }
-        return resourceManagerInstance;
+    public static void close()  {
+        getInstance().zkClient.close();
     }
 
     private static void createZNode(String path, Object data, CreateMode createMode) {

@@ -1,7 +1,7 @@
 package com.project.mapr;
 
 import com.project.MapRSession;
-import com.project.ResourceManager;
+import com.project.ConfigurationManager;
 import com.project.TaskDispatchManager;
 import com.project.storage.FileSystem;
 import com.project.utils.*;
@@ -33,6 +33,7 @@ public class JobTracker implements Serializable {
     private boolean isMapPhase = true;
     private int nextSlave = 0;
     private long startTime = 0;
+    private boolean outputSessionFlag = false;
 
     private File intermediateDir = new File("out/intermediate");
 
@@ -66,7 +67,7 @@ public class JobTracker implements Serializable {
 
     private void checkForSlaves() {
         List<Node> slaveNodes = new ArrayList<>();
-        for (Map.Entry<Integer, String> entry : ResourceManager.slaveAddresses.entrySet()) {
+        for (Map.Entry<Integer, String> entry : ConfigurationManager.slaveAddresses.entrySet()) {
             slaveNodes.add(new Node(Node.Type.SLAVE, entry.getKey()));
         }
         this.activeSlaves = slaveNodes;
@@ -334,20 +335,16 @@ public class JobTracker implements Serializable {
                     pendingResults.remove(new Integer(task.getCurrentExecutorID()));
                 }
             } else {
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        File localFile = FileSystem.copyFromRemotePath(task.getTaskOutput().getRemoteDataPath());
-                        parseKeyValuePair(localFile);
-                        synchronized (pendingResults)   {
-                            pendingResults.remove(new Integer(task.getCurrentExecutorID()));
-                            if(pendingResults.size() == 0)  {
-                                LogFile.writeToLog("Job took " + (System.currentTimeMillis() - startTime)
-                                        + " milliseconds to complete");
-                            }
-                        }
+                synchronized (pendingResults) {
+                    File localFile = FileSystem.copyFromRemotePath(task.getTaskOutput().getRemoteDataPath());
+                    parseKeyValuePair(localFile);
+                    pendingResults.remove(new Integer(task.getCurrentExecutorID()));
+                    if (pendingResults.size() == 0) {
+                        LogFile.writeToLog("Job took " + (System.currentTimeMillis() - startTime)
+                                + " milliseconds to complete");
+                        MapRSession.exit(0);
                     }
-                }).start();
+                }
             }
         }
     }
@@ -364,10 +361,13 @@ public class JobTracker implements Serializable {
                 stringTokenizer = new StringTokenizer(temp, ":");
                 key = stringTokenizer.nextToken();
                 value = stringTokenizer.nextToken();
-                printWriter = new PrintWriter(new FileWriter(jobOutput.getLocalFile(), true));
+                printWriter = new PrintWriter(new FileWriter(jobOutput.getLocalFile(), outputSessionFlag));
                 printWriter.println(key + " " + value);
                 printWriter.flush();
                 printWriter.close();
+
+                if (!outputSessionFlag)
+                    outputSessionFlag = true;
             }
             bufferedReader.close();
         } catch (java.io.IOException e) {

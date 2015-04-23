@@ -1,12 +1,7 @@
 package com.project.mapr;
 
-import com.project.MapRSession;
-import com.project.ResourceManager;
-import com.project.TaskDispatchManager;
-import com.project.application.Mapper;
-import com.project.application.OutputCollector;
-import com.project.application.Reducer;
-import com.project.application.WordCount;
+import com.project.*;
+import com.project.application.*;
 import com.project.storage.FileSystem;
 import com.project.utils.Node;
 import com.project.utils.Output;
@@ -27,6 +22,7 @@ public class TaskTracker implements OutputCollector, Serializable {
     private HashMap<String, List<Integer>> reduceKeyValuePairs;
     private HashMap<Integer, String> destinationPartitions;
     private Task currentTask;
+    private Partitioner partitioner;
 
     public TaskTracker() {
         mapper = new WordCount();
@@ -34,11 +30,12 @@ public class TaskTracker implements OutputCollector, Serializable {
         mapKeyValuePairs = new HashMap<>();
         reduceKeyValuePairs = new HashMap<>();
         destinationPartitions = new HashMap<>();
+        partitioner = new PartitionManager();
     }
 
     public void runMap(Task task) {
         if (task.getType() == Task.Type.MAP) {
-            ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
+            ConfigurationManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                     Node.Status.BUSY);
             currentTask = task;
             File file;
@@ -54,7 +51,7 @@ public class TaskTracker implements OutputCollector, Serializable {
 
     public void runReduce(final Task task) {
         if (task.getType() == Task.Type.REDUCE) {
-            ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
+            ConfigurationManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                     Node.Status.BUSY);
             currentTask = task;
             File file = FileSystem.copyFromRemotePath(task.getTaskInput().getRemoteDataPath());
@@ -100,7 +97,7 @@ public class TaskTracker implements OutputCollector, Serializable {
     private void combineOutput() {
         if (currentTask.getType() == Task.Type.MAP) {
             for (Map.Entry<String, Integer> entry : mapKeyValuePairs.entrySet()) {
-                int partitionID = ResourceManager.getPartitionForKey(entry.getKey());
+                int partitionID = partitioner.getPartitionID(entry.getKey());
                 try {
 
                     intermediateFile = new File(MapRSession.getRootDir(), currentTask.getType() + "_"
@@ -135,13 +132,13 @@ public class TaskTracker implements OutputCollector, Serializable {
     private void finishTask(Task task) {
         task.setStatus(Task.Status.COMPLETE);
         TaskDispatchManager.modifyTask(task);
-        ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
+        ConfigurationManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                 Node.Status.IDLE);
     }
 
     public void getPhaseOutput(Task task) {
         if (task.getStatus() == Task.Status.COMPLETE) {
-            ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
+            ConfigurationManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                     Node.Status.BUSY);
             task.setStatus(Task.Status.END);
 
@@ -161,7 +158,7 @@ public class TaskTracker implements OutputCollector, Serializable {
             }
 
             TaskDispatchManager.modifyTask(task);
-            ResourceManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
+            ConfigurationManager.changeNodeState(MapRSession.getInstance().getActiveNode().getNodeID(),
                     Node.Status.IDLE);
         }
     }
