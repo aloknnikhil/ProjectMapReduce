@@ -26,6 +26,7 @@ public class MapRSession {
     private Input input;
     private Node activeNode;
     private int nodeID;
+    private String inputPath;
     private String zookeeperHost = "ece-acis-dc282.acis.ufl.edu:1499";
     private String kafkaHost = "ece-acis-dc282.acis.ufl.edu";
     private String cassandraHost = "localhost:9160";
@@ -37,7 +38,13 @@ public class MapRSession {
     }
 
     public void startSession(String[] args) {
-        nodeID = Integer.parseInt(args[0]);
+        try {
+            nodeID = Integer.parseInt(args[0]);
+            inputPath = args[1];
+        } catch (Exception e)   {
+            LogFile.writeToLog("Invalid arguments");
+            System.exit(-1);
+        }
         LogFile.writeToLog("Current Node ID is " + nodeID);
         configureSession();
         configureActiveNode();
@@ -46,8 +53,13 @@ public class MapRSession {
     private void configureSession() {
         sessionDir = new File("out/session" + nodeID + "_" + System.currentTimeMillis());
         sessionDir.mkdir();
-        LogFile.writeToLog("Reading input from folder /input");
-        input = new Input(new File("out/input"));
+        LogFile.writeToLog("Reading input from folder " + inputPath);
+        File inputFolder = new File(inputPath);
+        if(!inputFolder.exists())   {
+            LogFile.writeToLog("No such input directory");
+            System.exit(-1);
+        }
+        input = new Input(inputFolder);
         mode = Mode.OFFLINE;
     }
 

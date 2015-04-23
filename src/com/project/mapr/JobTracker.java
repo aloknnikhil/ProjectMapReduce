@@ -32,6 +32,7 @@ public class JobTracker implements Serializable {
     private AtomicInteger completedTasksCount = new AtomicInteger(0);
     private boolean isMapPhase = true;
     private int nextSlave = 0;
+    private long startTime = 0;
 
     private File intermediateDir = new File("out/intermediate");
 
@@ -53,6 +54,7 @@ public class JobTracker implements Serializable {
         checkForSlaves();
         SocketTaskHandler.getInstance().connectToSlaves();
         LogFile.writeToLog("All slaves connected");
+        startTime = System.currentTimeMillis();
         LogFile.writeToLog("Started partitioning map tasks");
         initializeMapTasks();
         LogFile.writeToLog("Map tasks have been created");
@@ -301,11 +303,11 @@ public class JobTracker implements Serializable {
                     reduceTask = new Task();
                     try {
                         slave = activeSlaves.get(partitionEntry.getKey()).getNodeID();
-                    } catch (ClassCastException e)  {
+                    } catch (ClassCastException e) {
                         continue;
                     }
-                    if(acknowledgedFailedSlaves.contains(slave)) {
-                        if(!redirectionIndex.containsKey(slave))
+                    if (acknowledgedFailedSlaves.contains(slave)) {
+                        if (!redirectionIndex.containsKey(slave))
                             redirectionIndex.put(slave, getAliveSlave().getNodeID());
                         slave = redirectionIndex.get(slave);
                     }
@@ -337,6 +339,13 @@ public class JobTracker implements Serializable {
                     public void run() {
                         File localFile = FileSystem.copyFromRemotePath(task.getTaskOutput().getRemoteDataPath());
                         parseKeyValuePair(localFile);
+                        synchronized (pendingResults)   {
+                            pendingResults.remove(new Integer(task.getCurrentExecutorID()));
+                            if(pendingResults.size() == 0)  {
+                                LogFile.writeToLog("Job took " + (System.currentTimeMillis() - startTime)
+                                        + " milliseconds to complete");
+                            }
+                        }
                     }
                 }).start();
             }
@@ -357,7 +366,6 @@ public class JobTracker implements Serializable {
                 value = stringTokenizer.nextToken();
                 printWriter = new PrintWriter(new FileWriter(jobOutput.getLocalFile(), true));
                 printWriter.println(key + " " + value);
-
                 printWriter.flush();
                 printWriter.close();
             }
