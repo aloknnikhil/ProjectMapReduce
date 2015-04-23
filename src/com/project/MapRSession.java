@@ -51,7 +51,7 @@ public class MapRSession {
     }
 
     private void configureSession() {
-        sessionDir = new File("out/session" + nodeID + "_" + System.currentTimeMillis());
+        sessionDir = new File("temp/session" + nodeID + "_" + System.currentTimeMillis());
         sessionDir.mkdir();
         LogFile.writeToLog("Reading input from folder " + inputPath);
         File inputFolder = new File(inputPath);

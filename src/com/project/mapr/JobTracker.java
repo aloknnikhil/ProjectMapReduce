@@ -35,8 +35,6 @@ public class JobTracker implements Serializable {
     private long startTime = 0;
     private boolean outputSessionFlag = false;
 
-    private File intermediateDir = new File("out/intermediate");
-
     public JobTracker(Input inputFile) {
         pendingMapTasks = new HashMap<>();
         scheduledMapTasks = new ArrayList<>();
@@ -46,9 +44,7 @@ public class JobTracker implements Serializable {
         redirectionIndex = new HashMap<>();
         jobInput = inputFile;
         jobOutput = new Output(new File("results.txt"));
-        if (!intermediateDir.exists())
-            intermediateDir.mkdir();
-        LogFile.writeToLog("Job Tracker initialized. Output will be written to /results.txt");
+        LogFile.writeToLog("Job Tracker initialized. Output will be written to results.txt");
     }
 
     public void start() {
