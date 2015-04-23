@@ -4,6 +4,7 @@ import com.project.utils.DataSerializer;
 import com.project.utils.LogFile;
 import com.project.utils.Node;
 import org.I0Itec.zkclient.ZkClient;
+import org.I0Itec.zkclient.exception.ZkNodeExistsException;
 import org.apache.zookeeper.*;
 
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ public class ResourceManager {
 
     private ZkClient zkClient;
     private static final int SESSION_TIMEOUT = 65000;
+    private static List<String> cachedAllSlaves;
     private static ResourceManager resourceManagerInstance;
     public static HashMap<Integer, String> slaveAddresses = new HashMap<>();
 
@@ -30,6 +32,7 @@ public class ResourceManager {
     public final static String ALL_SLAVES_PATH = "/all";
 
     private ResourceManager() {
+        cachedAllSlaves = new ArrayList<>();
         zkClient = new ZkClient(MapRSession.getInstance().getZookeeperHost(),
                 SESSION_TIMEOUT, SESSION_TIMEOUT, new DataSerializer());
 
@@ -74,12 +77,6 @@ public class ResourceManager {
         List<String> busySlaves = getInstance().zkClient.getChildren(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH
                 + BUSY_SLAVES_PATH);
         return busySlaves;
-    }
-
-    public static List<String> getAllSlavePaths() {
-        List<String> allSlaves = getInstance().zkClient.getChildren(APPLICATION_ROOT_PATH + SLAVES_ROOT_PATH
-                + ALL_SLAVES_PATH);
-        return allSlaves;
     }
 
     public static String getMasterPath() {
@@ -149,6 +146,15 @@ public class ResourceManager {
         }
     }
 
+    public static Integer getPartitionForKey(String key)    {
+        char ch[] = key.toCharArray();
+
+        int i, sum;
+        for (sum=0, i=0; i < key.length(); i++)
+            sum += ch[i];
+        return (sum % slaveAddresses.size());
+    }
+
     public static ResourceManager getInstance() {
         if (resourceManagerInstance == null) {
             resourceManagerInstance = new ResourceManager();
@@ -159,12 +165,16 @@ public class ResourceManager {
     private static void createZNode(String path, Object data, CreateMode createMode) {
 
         if (!getInstance().zkClient.exists(path)) {
-            switch (createMode) {
-                case EPHEMERAL:
-                    getInstance().zkClient.createEphemeral(path, data);
-                    break;
-                case PERSISTENT:
-                    getInstance().zkClient.createPersistent(path, data);
+            try {
+                switch (createMode) {
+                    case EPHEMERAL:
+                        getInstance().zkClient.createEphemeral(path, data);
+                        break;
+                    case PERSISTENT:
+                        getInstance().zkClient.createPersistent(path, data);
+                }
+            } catch (ZkNodeExistsException e) {
+                return;
             }
         }
     }

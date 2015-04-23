@@ -1,5 +1,6 @@
 package com.project.mapr;
 
+import com.project.MapRSession;
 import com.project.ResourceManager;
 import com.project.SocketTaskHandler;
 import com.project.storage.FileSystem;
@@ -8,43 +9,58 @@ import com.project.utils.*;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Created by alok on 4/11/15.
+ * Created by alok on 4/11/15
  */
 public class JobTracker implements Serializable {
 
-    private HashMap<Integer, Queue<Task>> completedTasks;
-    private List<Task> allTasks;
-    private HashMap<Integer, Task> currentTaskFor;
-    private HashMap<Integer, Queue<Task>> pendingTasks;
-    private List<Node> activeSlaves;
+    private List<Task> scheduledMapTasks;
+    private HashMap<Integer, Queue<Task>> backupPendingTasks;
+    private HashMap<Integer, Queue<Task>> pendingReduceTasks;
+    private HashMap<Integer, Queue<Task>> pendingMapTasks;
+    private HashMap<Integer, Integer> redirectionIndex;
+    private List<Integer> pendingResults;
+    public List<Node> activeSlaves;
+    private List<Integer> acknowledgedFailedSlaves;
     private Input jobInput;
     private Output jobOutput;
-    private int outstandingTaskCount = 0;
+    private int totalMapTasks = 0;
+    private int totalReduceTasks = 0;
+    private AtomicInteger runningTasksCount = new AtomicInteger(0);
+    private AtomicInteger completedTasksCount = new AtomicInteger(0);
     private boolean isMapPhase = true;
-
-    private HashMap<String, Integer> reduceKeys = new HashMap<>();
+    private int nextSlave = 0;
+    private long startTime = 0;
 
     private File intermediateDir = new File("out/intermediate");
 
     public JobTracker(Input inputFile) {
-        completedTasks = new HashMap<>();
-        pendingTasks = new HashMap<>();
-        currentTaskFor = new HashMap<>();
-        allTasks = new ArrayList<>();
+        pendingMapTasks = new HashMap<>();
+        scheduledMapTasks = new ArrayList<>();
+        pendingReduceTasks = new HashMap<>();
+        pendingResults = new ArrayList<>();
+        acknowledgedFailedSlaves = new ArrayList<>();
+        redirectionIndex = new HashMap<>();
         jobInput = inputFile;
         jobOutput = new Output(new File("results.txt"));
         if (!intermediateDir.exists())
             intermediateDir.mkdir();
+        LogFile.writeToLog("Job Tracker initialized. Output will be written to /results.txt");
     }
 
     public void start() {
         checkForSlaves();
         SocketTaskHandler.getInstance().connectToSlaves();
+        LogFile.writeToLog("All slaves connected");
+        startTime = System.currentTimeMillis();
+        LogFile.writeToLog("Started partitioning map tasks");
         initializeMapTasks();
-        System.out.println("Pending Tasks: " + allTasks.size());
-        assignTasks();
+        LogFile.writeToLog("Map tasks have been created");
+        assignMapTasks();
+        LogFile.writeToLog("Job Scheduler has assigned map tasks");
+        LogFile.writeToLog("Map phase has begun");
         beginTasks();
     }
 
@@ -60,7 +76,7 @@ public class JobTracker implements Serializable {
         Task task;
         Input taskInput;
         int count = 1;
-        allTasks.clear();
+        scheduledMapTasks.clear();
 
         for (File file : jobInput.getLocalFile().listFiles()) {
             if (file.isDirectory()) {
@@ -70,8 +86,8 @@ public class JobTracker implements Serializable {
                     task.setStatus(Task.Status.INITIALIZED);
                     task.setTaskID(count);
                     taskInput = new Input(subFile);
-                    task.addTaskInput(taskInput);
-                    allTasks.add(task);
+                    task.setTaskInput(taskInput);
+                    scheduledMapTasks.add(task);
                     count++;
                 }
             } else {
@@ -80,181 +96,177 @@ public class JobTracker implements Serializable {
                 task.setStatus(Task.Status.INITIALIZED);
                 task.setTaskID(count);
                 taskInput = new Input(file);
-                task.addTaskInput(taskInput);
-                allTasks.add(task);
+                task.setTaskInput(taskInput);
+                scheduledMapTasks.add(task);
                 count++;
             }
         }
     }
 
-    public void initializeReduceTasks() {
-        Task task;
-        Input taskInput;
-        int count = 1;
-
-        outstandingTaskCount = 0;
-        allTasks.clear();
-        pendingTasks.clear();
-        completedTasks.clear();
-        for (File file : intermediateDir.listFiles()) {
-            if (file.isDirectory()) {
-                for (File subFile : file.listFiles()) {
-                    task = new Task();
-                    task.setType(Task.Type.REDUCE);
-                    task.setStatus(Task.Status.INITIALIZED);
-                    task.setTaskID(count);
-                    taskInput = new Input(subFile);
-                    task.addTaskInput(taskInput);
-                    allTasks.add(task);
-                    count++;
-                }
-            } else {
-                task = new Task();
-                task.setType(Task.Type.REDUCE);
-                task.setStatus(Task.Status.INITIALIZED);
-                task.setTaskID(count);
-                taskInput = new Input(file);
-                task.addTaskInput(taskInput);
-                allTasks.add(task);
-                count++;
-            }
-        }
-    }
-
-    public void assignTasks() {
-        Iterator nodeIterator = activeSlaves.iterator();
-        Node temp = null;
+    public void assignMapTasks() {
         Queue<Task> taskQueue;
-        boolean allSlavesDead = false;
-        int count = 0;
+        Node temp;
 
-        for (Task pendingTask : allTasks) {
-            do {
-                if (allSlavesDead) {
-                    System.out.println("All slaves offline! :o");
-                    return;
-                }
+        for (Task pendingTask : scheduledMapTasks) {
+            temp = getAliveSlave();
 
-                if (nodeIterator.hasNext()) {
-                    temp = (Node) nodeIterator.next();
+            if (!SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID())) {
+                pendingTask.setCurrentExecutorID(temp.getNodeID());
+                if (pendingMapTasks.containsKey(temp.getNodeID())) {
+                    pendingMapTasks.get(temp.getNodeID()).add(pendingTask);
                 } else {
-                    nodeIterator = activeSlaves.iterator();
-                    count++;
+                    taskQueue = new LinkedBlockingQueue<>();
+                    taskQueue.add(pendingTask);
+                    pendingMapTasks.put(temp.getNodeID(), taskQueue);
                 }
+            }
 
-                if (count == 2) {
-                    allSlavesDead = true;
-                }
-            } while (SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID()));
+            totalMapTasks++;
+        }
+    }
 
-            allSlavesDead = false;
-            count = 0;
+    public void beginTasks() {
+        final HashMap<Integer, Queue<Task>> pendingTasks = isMapPhase ? pendingMapTasks : pendingReduceTasks;
 
-            synchronized (pendingTasks) {
-                if (!SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID())) {
-                    pendingTask.setExecutorID(temp.getNodeID());
-                    if (pendingTasks.containsKey(temp.getNodeID())) {
-                        pendingTasks.get(temp.getNodeID()).add(pendingTask);
-                    } else {
-                        taskQueue = new LinkedBlockingQueue<>();
-                        taskQueue.add(pendingTask);
-                        pendingTasks.put(temp.getNodeID(), taskQueue);
+        LogFile.writeToLog("Making a copy of the assigned tasks");
+        backupPendingTasks = new HashMap<>();
+        for (Map.Entry<Integer, Queue<Task>> entry : pendingTasks.entrySet()) {
+            backupPendingTasks.put(entry.getKey(), new LinkedBlockingQueue<>(entry.getValue()));
+        }
+
+        completedTasksCount = new AtomicInteger(0);
+        runningTasksCount = new AtomicInteger(0);
+
+        for (final Map.Entry<Integer, Queue<Task>> entry : pendingTasks.entrySet()) {
+            if (entry.getValue().size() != 0) {
+                runningTasksCount.incrementAndGet();
+                new Thread(new Runnable() {
+                    Task pendingTask;
+
+                    @Override
+                    public void run() {
+                        pendingTask = entry.getValue().remove();
+                        if (!isMapPhase)
+                            SocketTaskHandler.dispatchTask(Task.convertToRemoteInput(pendingTask));
+                        else if (MapRSession.getInstance().getMode() == MapRSession.Mode.ONLINE && isMapPhase)
+                            SocketTaskHandler.dispatchTask(Task.convertToRemoteInput(pendingTask));
+                        else {
+                            SocketTaskHandler.dispatchTask(pendingTask);
+                        }
                     }
-                }
+                }).start();
             }
         }
     }
 
     public void rescheduleTasksFrom(Integer slaveID) {
-        System.out.println("Started rescheduling slave " + slaveID + "'s tasks");
-        Iterator nodeIterator = activeSlaves.iterator();
-        Node temp = null;
+        HashMap<Integer, Queue<Task>> pendingTasks = isMapPhase ? pendingMapTasks : pendingReduceTasks;
+        Iterator<Task> deadTasks = backupPendingTasks.get(slaveID).iterator();
+        Node temp;
+        Task pendingTask;
         Queue<Task> taskQueue;
-        boolean allSlavesDead = false;
-        int count = 0;
 
-        outstandingTaskCount--;
-        if (currentTaskFor.containsKey(slaveID)) {
-            pendingTasks.get(slaveID).add(currentTaskFor.get(slaveID));
-        }
+        runningTasksCount.incrementAndGet();
+        LogFile.writeToLog("Rescheduling slave " + slaveID + "'s tasks");
+        while (deadTasks.hasNext()) {
+            pendingTask = deadTasks.next();
+            temp = getAliveSlave();
+            if (!SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID())) {
+                pendingTask.setCurrentExecutorID(temp.getNodeID());
+                completedTasksCount.decrementAndGet();
+                if (isMapPhase)
+                    totalMapTasks++;
+                else
+                    totalReduceTasks++;
 
-        for (Task pendingTask : pendingTasks.get(slaveID)) {
-            do {
-                if (allSlavesDead) {
-                    System.out.println("All slaves offline! :o");
-                    return;
-                }
-
-                if (nodeIterator.hasNext()) {
-                    temp = (Node) nodeIterator.next();
+                if (pendingTasks.containsKey(temp.getNodeID())) {
+                    pendingTasks.get(temp.getNodeID()).add(pendingTask);
+                    pendingTasks.put(temp.getNodeID(), pendingTasks.get(temp.getNodeID()));
                 } else {
-                    nodeIterator = activeSlaves.iterator();
-                    count++;
-                }
-
-                if (count == 2) {
-                    allSlavesDead = true;
-                }
-            } while (SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID()));
-
-            allSlavesDead = false;
-            count = 0;
-
-            synchronized (pendingTasks) {
-                if (!SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID())) {
-                    pendingTask.setExecutorID(temp.getNodeID());
-                    if (pendingTasks.containsKey(temp.getNodeID())) {
-                        pendingTasks.get(temp.getNodeID()).add(pendingTask);
-                    } else {
-                        taskQueue = new LinkedBlockingQueue<>();
-                        taskQueue.add(pendingTask);
-                        pendingTasks.put(temp.getNodeID(), taskQueue);
-                    }
+                    taskQueue = new LinkedBlockingQueue<>();
+                    taskQueue.add(pendingTask);
+                    pendingTasks.put(temp.getNodeID(), taskQueue);
                 }
             }
         }
-        System.out.println("Finished rescheduling slave " + slaveID + "'s tasks");
+        pendingTasks.get(slaveID).clear();
+        LogFile.writeToLog("Rescheduling complete");
     }
 
-    public void beginTasks() {
-        for (Map.Entry<Integer, Queue<Task>> entry : pendingTasks.entrySet()) {
-            if (entry.getValue().size() != 0) {
-                outstandingTaskCount++;
-                currentTaskFor.put(entry.getKey(), entry.getValue().remove());
-                SocketTaskHandler.dispatchTask(Task.convertToRemoteInput(currentTaskFor.get(entry.getKey())));
-            }
-        }
+    public void acknowledgeFailure(Integer slave) {
+        runningTasksCount.decrementAndGet();
+        pendingResults.remove(slave);
     }
 
     public void markTaskComplete(Task task) {
-        Queue<Task> taskQueue;
+        HashMap<Integer, Queue<Task>> pendingTasks = isMapPhase ? pendingMapTasks : pendingReduceTasks;
+        Task pendingTask;
+        int deadCount = 0;
 
-        outstandingTaskCount--;
-        if (completedTasks.containsKey(task.getExecutorID())) {
-            completedTasks.get(task.getExecutorID()).add(task);
-        } else {
-            taskQueue = new LinkedBlockingQueue<>();
-            taskQueue.add(task);
-            completedTasks.put(task.getExecutorID(), taskQueue);
-            currentTaskFor.remove(task.getExecutorID());
+        if (task.getStatus() != Task.Status.END) {
+            runningTasksCount.decrementAndGet();
+            completedTasksCount.incrementAndGet();
         }
 
         synchronized (pendingTasks) {
-            if (pendingTasks.get(task.getExecutorID()).size() > 0) {
-                outstandingTaskCount++;
-                currentTaskFor.put(task.getExecutorID(), pendingTasks.get(task.getExecutorID()).remove());
-                SocketTaskHandler.modifyTask(Task.convertToRemoteInput(currentTaskFor.get(task.getExecutorID())));
+            if (pendingTasks.get(task.getCurrentExecutorID()).size() > 0) {
+                runningTasksCount.incrementAndGet();
+
+                pendingTask = pendingTasks.get(task.getCurrentExecutorID()).remove();
+                if (!isMapPhase)
+                    SocketTaskHandler.dispatchTask(Task.convertToRemoteInput(pendingTask));
+                else if (MapRSession.getInstance().getMode() == MapRSession.Mode.ONLINE && isMapPhase)
+                    SocketTaskHandler.dispatchTask(Task.convertToRemoteInput(pendingTask));
+                else {
+                    SocketTaskHandler.dispatchTask(pendingTask);
+                }
             }
         }
 
-        System.out.println("Outstanding tasks: " + getOutstandingTaskCount());
-        if (getOutstandingTaskCount() == 0 && isMapPhase) {
-            isMapPhase = false;
-            initializeReduceTasks();
-            assignTasks();
-            beginTasks();
-        } else if (getOutstandingTaskCount() == 0 && !isMapPhase) {
-            writeOutput();
+        if (task.getType() == Task.Type.MAP)
+            LogFile.writeToLog("Map progress: " + (completedTasksCount.get() * 100) / totalMapTasks
+                    + "% Pending tasks: " + (totalMapTasks - completedTasksCount.get()));
+        else
+            LogFile.writeToLog("Reduce progress: " + (completedTasksCount.get() * 100) / totalReduceTasks
+                    + "% Pending tasks: " + (totalReduceTasks - completedTasksCount.get()));
+
+        if (isMapPhase && (getRunningTasksCount() == 0)) {
+            if (isMapPhase)
+                totalMapTasks = 0;
+            else
+                totalReduceTasks = 0;
+
+            if (SocketTaskHandler.getInstance().offlineSlaves.size() > 0) {
+                for (Integer slave : SocketTaskHandler.getInstance().offlineSlaves) {
+                    if (!acknowledgedFailedSlaves.contains(slave)) {
+                        rescheduleTasksFrom(slave);
+                        acknowledgedFailedSlaves.add(slave);
+                        deadCount++;
+                    }
+                }
+
+                if (deadCount > 0)
+                    beginTasks();
+                else {
+                    LogFile.writeToLog("Completed Map phase. Consolidating reduce tasks");
+                    collectResults(task.getType());
+                }
+            } else {
+                LogFile.writeToLog("Completed Map phase. Consolidating reduce tasks");
+                collectResults(task.getType());
+            }
+        } else if (!isMapPhase && getRunningTasksCount() == 0) {
+            collectResults(task.getType());
+        }
+    }
+
+    private void collectResults(Task.Type type) {
+        for (Integer slave : pendingResults) {
+            Task tempTask = new Task();
+            tempTask.setType(type);
+            tempTask.setStatus(Task.Status.COMPLETE);
+            tempTask.setCurrentExecutorID(slave);
+            SocketTaskHandler.dispatchTask(tempTask);
         }
     }
 
@@ -262,93 +274,117 @@ public class JobTracker implements Serializable {
         return new Task();
     }
 
-    public HashMap<Integer, Queue<Task>> getCompletedTasks() {
-        return completedTasks;
+    public HashMap<Integer, Queue<Task>> getPendingMapTasks() {
+        return pendingMapTasks;
     }
 
-    public HashMap<Integer, Queue<Task>> getPendingTasks() {
-        return pendingTasks;
+    public List<Task> getScheduledMapTasks() {
+        return scheduledMapTasks;
     }
 
-    public List<Task> getAllTasks() {
-        return allTasks;
+    public int getRunningTasksCount() {
+        return runningTasksCount.get();
     }
 
-    public int getOutstandingTaskCount() {
-        return outstandingTaskCount;
-    }
+    public void collectTaskOutput(final Task task) {
+        Task reduceTask;
+        Queue<Task> taskQueue;
+        Integer slave;
 
-    public void collectTaskOutput(Task task) {
-        File localFile;
-        synchronized (this) {
-            for (Output output : task.getTaskOutput()) {
-                localFile = FileSystem.copyFromRemotePath(output.getRemoteDataPath());
-                parseKeyValuePair(localFile, task.getType());
+        if (task.getStatus() == Task.Status.COMPLETE) {
+            synchronized (pendingResults) {
+                if (!SocketTaskHandler.getInstance().offlineSlaves.contains(task.getCurrentExecutorID())
+                        && !pendingResults.contains(task.getCurrentExecutorID()))
+                    pendingResults.add(task.getCurrentExecutorID());
+            }
+        } else if (task.getStatus() == Task.Status.END) {
+            if (task.getType() == Task.Type.MAP) {
+                for (Map.Entry<Integer, String> partitionEntry : task.getReducePartitionIDs().entrySet()) {
+                    reduceTask = new Task();
+                    try {
+                        slave = activeSlaves.get(partitionEntry.getKey()).getNodeID();
+                    } catch (ClassCastException e) {
+                        continue;
+                    }
+                    if (acknowledgedFailedSlaves.contains(slave)) {
+                        if (!redirectionIndex.containsKey(slave))
+                            redirectionIndex.put(slave, getAliveSlave().getNodeID());
+                        slave = redirectionIndex.get(slave);
+                    }
+                    reduceTask.setCurrentExecutorID(slave);
+                    reduceTask.setTaskInput(new Input(partitionEntry.getValue()));
+                    reduceTask.setType(Task.Type.REDUCE);
+                    reduceTask.setStatus(Task.Status.INITIALIZED);
+                    totalReduceTasks++;
+
+                    synchronized (pendingReduceTasks) {
+                        if (pendingReduceTasks.containsKey(slave))
+                            pendingReduceTasks.get(slave).add(reduceTask);
+                        else {
+                            taskQueue = new LinkedBlockingQueue<>();
+                            taskQueue.add(reduceTask);
+                            pendingReduceTasks.put(slave, taskQueue);
+                        }
+
+                        if (pendingResults.size() == 0 && isMapPhase) {
+                            isMapPhase = false;
+                            beginTasks();
+                        }
+                    }
+                    pendingResults.remove(new Integer(task.getCurrentExecutorID()));
+                }
+            } else {
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        File localFile = FileSystem.copyFromRemotePath(task.getTaskOutput().getRemoteDataPath());
+                        parseKeyValuePair(localFile);
+                        synchronized (pendingResults)   {
+                            pendingResults.remove(new Integer(task.getCurrentExecutorID()));
+                            if(pendingResults.size() == 0)  {
+                                LogFile.writeToLog("Job took " + (System.currentTimeMillis() - startTime)
+                                        + " milliseconds to complete");
+                            }
+                        }
+                    }
+                }).start();
             }
         }
     }
 
-    private void parseKeyValuePair(File intermediateFile, Task.Type type) {
+    private void parseKeyValuePair(File intermediateFile) {
         BufferedReader bufferedReader;
-        String temp;
+        StringTokenizer stringTokenizer;
+        String temp, key, value;
         PrintWriter printWriter;
-        File intermediateChunk;
 
-        if (type == Task.Type.MAP) {
-            try {
-                bufferedReader = new BufferedReader(new FileReader(intermediateFile));
-                while ((temp = bufferedReader.readLine()) != null) {
-                    intermediateChunk = new File(intermediateDir, "key_" + temp.charAt(0));
-                    printWriter = new PrintWriter(new FileWriter(intermediateChunk, true));
-                    printWriter.println(temp);
-                    printWriter.flush();
-                    printWriter.close();
-                }
-                bufferedReader.close();
-            } catch (java.io.IOException e) {
-                e.printStackTrace();
-            }
-        } else {
-            reduceKeyValuePair(intermediateFile);
-        }
-    }
-
-    private void reduceKeyValuePair(File file) {
-        String temp, key = null, value = null;
-        Splitter splitter;
-        Integer valueFinal;
         try {
-            BufferedReader bufferedReader = new BufferedReader(new FileReader(file));
+            bufferedReader = new BufferedReader(new FileReader(intermediateFile));
             while ((temp = bufferedReader.readLine()) != null) {
-                splitter = new Splitter(temp);
-                key = splitter.getKey();
-                value = splitter.getValue();
-                if (reduceKeys.containsKey(key)) {
-                    valueFinal = reduceKeys.get(key) + Integer.valueOf(value);
-                    reduceKeys.put(key, valueFinal);
-                } else {
-                    reduceKeys.put(key, Integer.valueOf(value));
-                }
+                stringTokenizer = new StringTokenizer(temp, ":");
+                key = stringTokenizer.nextToken();
+                value = stringTokenizer.nextToken();
+                printWriter = new PrintWriter(new FileWriter(jobOutput.getLocalFile(), true));
+                printWriter.println(key + " " + value);
+                printWriter.flush();
+                printWriter.close();
             }
             bufferedReader.close();
-        } catch (IOException e) {
+        } catch (java.io.IOException e) {
             e.printStackTrace();
-        } catch (NumberFormatException e)   {
-            System.out.println("File name: " + file.getAbsolutePath() + " Key: " + key + " Value: " + value);
         }
     }
 
-    private void writeOutput() {
-        PrintWriter printWriter;
-        try {
-            printWriter = new PrintWriter(new FileWriter(jobOutput.getLocalFile(), true));
-            for (Map.Entry<String, Integer> keyValuePair : reduceKeys.entrySet()) {
-                printWriter.println(keyValuePair.getKey() + " " + keyValuePair.getValue());
-            }
-            printWriter.flush();
-            printWriter.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    private Node getAliveSlave() {
+        Node temp;
+
+        do {
+            if (nextSlave >= activeSlaves.size())
+                nextSlave = nextSlave % activeSlaves.size();
+            temp = activeSlaves.get(nextSlave);
+            nextSlave++;
+        } while (SocketTaskHandler.getInstance().offlineSlaves.contains(temp.getNodeID()));
+
+        return temp;
     }
 }

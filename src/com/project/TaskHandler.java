@@ -1,7 +1,5 @@
 package com.project;
 
-import com.project.utils.LogFile;
-import com.project.utils.Node;
 import com.project.utils.Task;
 import com.project.utils.TaskChangeListener;
 import kafka.consumer.Consumer;
@@ -17,8 +15,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
@@ -57,7 +53,7 @@ public class TaskHandler {
     }
 
     public static void dispatchTask(Task task) {
-        String taskExecutor = "" + task.getExecutorID();
+        String taskExecutor = "" + task.getCurrentExecutorID();
         KeyedMessage<String, byte[]> taskKeyedMessage = new KeyedMessage<>(taskExecutor,
                 task.getTaskID() + "", Task.serialize(task));
         getInstance().taskProducer.send(taskKeyedMessage);

@@ -1,5 +1,6 @@
 package com.project;
 
+import com.project.utils.LogFile;
 import com.project.utils.Node;
 import com.project.utils.Task;
 
@@ -16,7 +17,7 @@ public class SocketTaskHandler {
     private static SocketTaskHandler resourceManagerInstance;
     private HashMap<Integer, ObjectOutputStream> connectedSlaves;
     private HashMap<Integer, Integer> pendingHeartBeats;
-    private static final int MAX_RETRY_COUNT = 3;
+    private static final int MAX_RETRY_COUNT = 10;
     public List<Integer> offlineSlaves;
     private ObjectOutputStream masterSocket;
     private Runnable dispatcherRunnable;
@@ -29,11 +30,13 @@ public class SocketTaskHandler {
 
     public void connectToSlaves() {
         for (Map.Entry<Integer, String> entry : ResourceManager.slaveAddresses.entrySet()) {
+            LogFile.writeToLog("Waiting to connect to slave " + entry.getKey() + " at address " + entry.getValue());
             connectTo(entry.getKey());
         }
     }
 
     public void setupSocketListener() {
+        LogFile.writeToLog("Waiting for connection request from Master");
         dispatcherRunnable = new Runnable() {
 
             Socket socket;
@@ -49,19 +52,22 @@ public class SocketTaskHandler {
                     int port = Integer.parseInt(stringTokenizer.nextToken());
 
                     ServerSocket serverSocket = new ServerSocket(port);
-                    while (!Thread.currentThread().interrupted()) {
+                    while (!Thread.interrupted()) {
                         socket = serverSocket.accept();
                         socket.setSendBufferSize(64 * 1024);
                         socket.setReceiveBufferSize(64 * 1024);
                         masterSocket = new ObjectOutputStream(
                                 new BufferedOutputStream(socket.getOutputStream()));
-                        serverInstance = new Thread(new ServerProcess(socket));
+                        serverInstance = new Thread(new ServerProcess(socket, 0));
                         serverInstance.start();
+                        LogFile.writeToLog("Connected to master successfully");
+                        LogFile.writeToLog("Terminating connection listener. We already have one master.");
+                        break;
                     }
                     serverSocket.close();
 
                 } catch (IOException e) {
-                    System.out.println("Error! Something went wrong. Please restart the process");
+                    LogFile.writeToLog("Error! Something went wrong. Shutting down process");
                 }
             }
         };
@@ -74,8 +80,8 @@ public class SocketTaskHandler {
             @Override
             public void run() {
                 ObjectOutputStream nodeSocket;
-                if(MapRSession.getInstance().getActiveNode().getType() == Node.Type.MASTER)
-                    nodeSocket = getInstance().connectedSlaves.get(task.getExecutorID());
+                if (MapRSession.getInstance().getActiveNode().getType() == Node.Type.MASTER)
+                    nodeSocket = getInstance().connectedSlaves.get(task.getCurrentExecutorID());
                 else
                     nodeSocket = getInstance().masterSocket;
                 writeTaskToSocket(nodeSocket, task);
@@ -109,24 +115,26 @@ public class SocketTaskHandler {
                 socket.setReceiveBufferSize(64 * 1024);
                 getInstance().connectedSlaves.put(slaveID, new ObjectOutputStream(
                         new BufferedOutputStream(socket.getOutputStream())));
-                new Thread(new ServerProcess(socket)).start();
+                new Thread(new ServerProcess(socket, slaveID)).start();
                 redo = false;
             } catch (java.net.SocketException e) {
                 try {
                     Thread.sleep(2000);
                     redo = true;
                 } catch (InterruptedException e1) {
-                    System.out.println("Connect process interrupted. Exiting process.");
+                    LogFile.writeToLog("Connect process interrupted. Exiting process.");
                 }
             } catch (IOException e) {
                 e.printStackTrace();
             }
         } while (redo);
         getInstance().pendingHeartBeats.put(slaveID, 0);
+        LogFile.writeToLog("Connected to slave " + slaveID);
         startHeartBeat(slaveID);
+        LogFile.writeToLog("Started HeartBeat instance for slave " + slaveID);
     }
 
-    private static void startHeartBeat(Integer slaveID)    {
+    private static void startHeartBeat(Integer slaveID) {
         new Thread(new HeartBeatRunnable(slaveID)).start();
     }
 
@@ -138,14 +146,16 @@ public class SocketTaskHandler {
             return true;
         } catch (IOException e) {
             return false;
+        } catch (NullPointerException e) {
+            return false;
         }
     }
 
-    private static class HeartBeatRunnable implements Runnable  {
+    private static class HeartBeatRunnable implements Runnable {
 
         Integer slaveID;
 
-        private HeartBeatRunnable(Integer slaveID)  {
+        private HeartBeatRunnable(Integer slaveID) {
             this.slaveID = slaveID;
         }
 
@@ -156,26 +166,24 @@ public class SocketTaskHandler {
 
             try {
                 while (true) {
-                    Thread.sleep(5000);
+                    Thread.sleep(4096);
                     if (getInstance().pendingHeartBeats.get(slaveID) > MAX_RETRY_COUNT) {
-                        getInstance().offlineSlaves.add(slaveID);
-                        MapRSession.getInstance().getActiveNode().getJobTracker().rescheduleTasksFrom(slaveID);
+                        if (!getInstance().offlineSlaves.contains(slaveID))
+                            getInstance().offlineSlaves.add(slaveID);
+                        MapRSession.getInstance().getActiveNode().getJobTracker().acknowledgeFailure(slaveID);
                         Thread.currentThread().interrupt();
                     }
 
                     task = new Task();
                     task.setType(Task.Type.HEARTBEAT);
                     task.setStatus(Task.Status.INITIALIZED);
-                    task.setExecutorID(slaveID);
+                    task.setCurrentExecutorID(slaveID);
                     getInstance().pendingHeartBeats.put(slaveID, getInstance().pendingHeartBeats.get(slaveID) + 1);
-                    if(writeTaskToSocket(getInstance().connectedSlaves.get(slaveID), task))
-                        System.out.println("Beat for " + slaveID);
-                    else    {
+                    if (!writeTaskToSocket(getInstance().connectedSlaves.get(slaveID), task)) {
                         getInstance().pendingHeartBeats.put(slaveID, MAX_RETRY_COUNT + 1);
                     }
                 }
             } catch (InterruptedException e) {
-                System.out.println("Slave " + slaveID + " has died :(");
             }
         }
     }
@@ -183,12 +191,14 @@ public class SocketTaskHandler {
     private static class ServerProcess implements Runnable {
 
         Socket socket;
+        Integer slaveID;
         ObjectInputStream objectInputStream;
         BufferedInputStream bufferedInputStream;
-        Task task;
+        Task task = new Task();
 
-        private ServerProcess(Socket socket) throws IOException {
+        private ServerProcess(Socket socket, Integer slaveID) throws IOException {
             this.socket = socket;
+            this.slaveID = slaveID;
         }
 
         @Override
@@ -197,61 +207,101 @@ public class SocketTaskHandler {
             try {
                 bufferedInputStream = new BufferedInputStream(socket.getInputStream());
                 objectInputStream = new ObjectInputStream(bufferedInputStream);
+                loop:
                 while (true) {
-                    task = (Task) objectInputStream.readUnshared();
                     switch (MapRSession.getInstance().getActiveNode().getType()) {
                         case MASTER:
-                            if(task.getType() == Task.Type.ACK) {
-                                getInstance().pendingHeartBeats.put(task.getExecutorID(), 0);
-                            } else {
-                                switch (task.getStatus()) {
-                                    case COMPLETE:
-                                        new Thread(new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                MapRSession.getInstance().getActiveNode().getJobTracker().collectTaskOutput(task);
-                                                MapRSession.getInstance().getActiveNode().getJobTracker().markTaskComplete(task);
-                                            }
-                                        }).start();
-                                        break;
+                            try {
+                                synchronized (task) {
+                                    task = (Task) objectInputStream.readUnshared();
+                                    if (task.getType() == Task.Type.ACK) {
+                                        getInstance().pendingHeartBeats.put(task.getCurrentExecutorID(), 0);
+                                    } else {
+                                        switch (task.getStatus()) {
+                                            case END:
+                                            case COMPLETE:
+                                                new Thread(new TaskOutputProcessor(task)).start();
+                                                break;
+                                        }
+                                    }
                                 }
+                            } catch (Exception e) {
+                                LogFile.writeToLog("Slave " + slaveID + " failed to communicate");
+                                break loop;
                             }
                             break;
 
                         case SLAVE:
-                            switch (task.getStatus()) {
-                                case INITIALIZED:
-                                    if (task.getType() == Task.Type.MAP) {
-                                        task.setStatus(Task.Status.RUNNING);
-                                        SocketTaskHandler.modifyTask(task);
+                            try {
+                                task = (Task) objectInputStream.readUnshared();
+
+                                switch (task.getStatus()) {
+                                    case INITIALIZED:
+                                        if (task.getType() == Task.Type.MAP) {
+                                            task.setStatus(Task.Status.RUNNING);
+                                            SocketTaskHandler.modifyTask(task);
+                                            new Thread(new Runnable() {
+                                                @Override
+                                                public void run() {
+                                                    MapRSession.getInstance().getActiveNode().getTaskTracker()
+                                                            .runMap(task);
+                                                }
+                                            }).start();
+                                        } else if (task.getType() == Task.Type.REDUCE) {
+                                            task.setStatus(Task.Status.RUNNING);
+                                            SocketTaskHandler.modifyTask(task);
+                                            new Thread(new Runnable() {
+                                                @Override
+                                                public void run() {
+                                                    MapRSession.getInstance().getActiveNode().getTaskTracker()
+                                                            .runReduce(task);
+                                                }
+                                            }).start();
+                                        } else if (task.getType() == Task.Type.HEARTBEAT) {
+                                            task.setType(Task.Type.ACK);
+                                            modifyTask(task);
+                                        }
+                                        break;
+
+                                    case COMPLETE:
                                         new Thread(new Runnable() {
                                             @Override
                                             public void run() {
-                                                MapRSession.getInstance().getActiveNode().getTaskTracker().runMap(task);
+                                                MapRSession.getInstance().getActiveNode().getTaskTracker()
+                                                        .getPhaseOutput(task);
                                             }
                                         }).start();
-                                    } else if (task.getType() == Task.Type.REDUCE) {
-                                        task.setStatus(Task.Status.RUNNING);
-                                        SocketTaskHandler.modifyTask(task);
-                                        new Thread(new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                MapRSession.getInstance().getActiveNode().getTaskTracker().runReduce(task);
-                                            }
-                                        }).start();
-                                    } else if (task.getType() == Task.Type.HEARTBEAT)   {
-                                        task.setType(Task.Type.ACK);
-                                        modifyTask(task);
-                                    }
-                                    break;
+                                }
+                            } catch (Exception e) {
+                                LogFile.writeToLog("Connection to master lost");
+                                getInstance().offlineSlaves.add(slaveID);
+                                break loop;
                             }
                     }
                 }
             } catch (IOException e) {
-                System.out.println("A slave has failed to communicate");
-            } catch (ClassNotFoundException e) {
-                e.printStackTrace();
+                if (MapRSession.getInstance().getActiveNode().getType() == Node.Type.MASTER)
+                    LogFile.writeToLog("Slave " + slaveID + " failed to communicate");
+                else
+                    LogFile.writeToLog("Connection to master lost");
             }
         }
     }
+
+    private static class TaskOutputProcessor implements Runnable {
+
+        Task task;
+
+        private TaskOutputProcessor(Task task) {
+            this.task = task;
+        }
+
+        @Override
+        public void run() {
+            MapRSession.getInstance().getActiveNode().getJobTracker().collectTaskOutput(task);
+            if (task.getStatus() == Task.Status.COMPLETE)
+                MapRSession.getInstance().getActiveNode().getJobTracker().markTaskComplete(task);
+        }
+    }
+
 }

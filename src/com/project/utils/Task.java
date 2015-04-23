@@ -6,6 +6,7 @@ import kafka.serializer.Encoder;
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 /**
@@ -23,19 +24,21 @@ public class Task implements Serializable, Encoder<Task>, Decoder<Task> {
     public enum Status {
         INITIALIZED,
         RUNNING,
-        COMPLETE
+        COMPLETE,
+        END
     }
 
     private int taskID;
-    private int executorID;
-    private List<Input> taskInput;
-    private List<Output> taskOutput;
+    private int currentExecutorID;
+
+    private HashMap<Integer, String> reducePartitionIDs;
+    private Input taskInput;
+    private Output taskOutput;
     private Type type;
     private Status status;
 
     public Task()   {
-        taskInput = new ArrayList<>();
-        taskOutput = new ArrayList<>();
+        reducePartitionIDs = new HashMap();
     }
 
     public int getTaskID() {
@@ -46,31 +49,27 @@ public class Task implements Serializable, Encoder<Task>, Decoder<Task> {
         this.taskID = taskID;
     }
 
-    public int getExecutorID() {
-        return executorID;
+    public int getCurrentExecutorID() {
+        return currentExecutorID;
     }
 
-    public void setExecutorID(int executorID) {
-        this.executorID = executorID;
+    public void setCurrentExecutorID(int currentExecutorID) {
+        this.currentExecutorID = currentExecutorID;
     }
 
-    public List<Input> getTaskInput() {
+    public Input getTaskInput() {
         return taskInput;
     }
 
-    public void setTaskInput(List<Input> taskInput) {
+    public void setTaskInput(Input taskInput) {
         this.taskInput = taskInput;
     }
 
-    public void addTaskInput(Input taskInput)   {
-        this.taskInput.add(taskInput);
-    }
-
-    public List<Output> getTaskOutput() {
+    public Output getTaskOutput() {
         return taskOutput;
     }
 
-    public void setTaskOutput(List<Output> taskOutput) {
+    public void setTaskOutput(Output taskOutput) {
         this.taskOutput = taskOutput;
     }
 
@@ -90,26 +89,23 @@ public class Task implements Serializable, Encoder<Task>, Decoder<Task> {
         this.status = status;
     }
 
-    public static Task convertToRemoteInput(Task task) {
-        if(task.getTaskInput().get(0).getType() == Input.Type.LOCAL) {
-            for(Input input : task.getTaskInput()) {
-                input.setType(Input.Type.REMOTE);
-                input.setRemoteDataPath(FileSystem.copyFromLocalFile(input.getLocalFile()));
-                input.setLocalFile(null);
-            }
+    public static Task convertToRemoteInput(Task task)  {
+        if(task.getTaskInput().getType() == Input.Type.LOCAL) {
+            Input input = task.getTaskInput();
+            input.setType(Input.Type.REMOTE);
+            input.setRemoteDataPath(FileSystem.copyFromLocalFile(input.getLocalFile()));
+            input.setLocalFile(null);
+            task.setTaskInput(input);
         }
         return task;
     }
 
-    public static Task convertToRemoteOutput(Task task) {
-        if(task.getTaskOutput().get(0).getType() == Output.Type.LOCAL) {
-            for(Output output : task.getTaskOutput()) {
-                output.setType(Output.Type.REMOTE);
-                output.setRemoteDataPath(FileSystem.copyFromLocalFile(output.getLocalFile()));
-                output.setLocalFile(null);
-            }
-        }
-        return task;
+    public HashMap<Integer, String> getReducePartitionIDs() {
+        return reducePartitionIDs;
+    }
+
+    public void setReducePartitionIDs(HashMap<Integer, String> reducePartitionIDs) {
+        this.reducePartitionIDs = reducePartitionIDs;
     }
 
     @Override

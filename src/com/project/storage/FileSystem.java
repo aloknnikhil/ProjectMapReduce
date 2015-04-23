@@ -1,27 +1,34 @@
 package com.project.storage;
 
+import com.datastax.driver.core.policies.DefaultRetryPolicy;
+import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableMap;
 import com.netflix.astyanax.AstyanaxContext;
 import com.netflix.astyanax.Keyspace;
+import com.netflix.astyanax.connectionpool.Host;
 import com.netflix.astyanax.connectionpool.NodeDiscoveryType;
 import com.netflix.astyanax.connectionpool.exceptions.BadRequestException;
 import com.netflix.astyanax.connectionpool.exceptions.ConnectionException;
 import com.netflix.astyanax.connectionpool.impl.ConnectionPoolConfigurationImpl;
-import com.netflix.astyanax.connectionpool.impl.CountingConnectionPoolMonitor;
+import com.netflix.astyanax.connectionpool.impl.ConnectionPoolType;
+import com.netflix.astyanax.cql.JavaDriverConfigBuilder;
 import com.netflix.astyanax.impl.AstyanaxConfigurationImpl;
 import com.netflix.astyanax.model.ColumnFamily;
+import com.netflix.astyanax.model.ConsistencyLevel;
 import com.netflix.astyanax.recipes.storage.CassandraChunkedStorageProvider;
 import com.netflix.astyanax.recipes.storage.ChunkedStorage;
-import com.netflix.astyanax.recipes.storage.ObjectMetadata;
 import com.netflix.astyanax.serializers.StringSerializer;
 import com.netflix.astyanax.thrift.ThriftFamilyFactory;
 import com.project.MapRSession;
 import com.project.utils.LogFile;
-import com.project.utils.Node;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 
 import java.io.*;
+import java.security.MessageDigest;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
 
 /**
  * Created by alok on 4/11/15 in ProjectMapReduce
@@ -32,8 +39,12 @@ public class FileSystem {
     private AstyanaxContext<Keyspace> context;
     private Keyspace keyspace;
     private CassandraChunkedStorageProvider chunkedStorageProvider;
+    private File tempDir;
     public static ColumnFamily<String, String> CF_CHUNK =
             ColumnFamily.newColumnFamily("cfchunk", StringSerializer.get(), StringSerializer.get());
+    private HashMap<byte[], String> cacheRemoteRefs;
+    private HashMap<byte[], String> cacheLocalRefs;
+    private MessageDigest messageDigest;
 
     private FileSystem() {
         configureFileSystem();
@@ -41,6 +52,11 @@ public class FileSystem {
 
     private void configureFileSystem() {
         connectToBackStore();
+        cacheRemoteRefs = new HashMap<>();
+        cacheLocalRefs = new HashMap<>();
+        tempDir = new File("out/temp_" + MapRSession.getInstance().getActiveNode().getNodeID());
+        if(!tempDir.exists())
+            tempDir.mkdir();
     }
 
     private static FileSystem getInstance() {
@@ -53,22 +69,32 @@ public class FileSystem {
     }
 
     public static String copyFromLocalFile(File localFile) {
-        long checkSum = 0;
         try {
-            checkSum = FileUtils.checksumCRC32(localFile);
-            ByteArrayInputStream in = new ByteArrayInputStream(IOUtils.toByteArray(new FileInputStream(localFile)));
+            byte[] fileContents = IOUtils.toByteArray(new FileInputStream(localFile));
+            getInstance().messageDigest = MessageDigest.getInstance("MD5");
+            getInstance().messageDigest.update(fileContents);
+            byte[] hashContents = getInstance().messageDigest.digest();
+
+            synchronized (getInstance().cacheRemoteRefs) {
+                if (getInstance().cacheRemoteRefs.containsKey(hashContents)) {
+                    return getInstance().cacheRemoteRefs.get(hashContents);
+                }
+            }
+
+            ByteArrayInputStream in = new ByteArrayInputStream(fileContents);
             ChunkedStorage.newWriter(getInstance().chunkedStorageProvider,
-                    checkSum + "", in)
+                    localFile.getAbsolutePath(), in)
                     .withChunkSize(16384)
                     .call();
+            getInstance().cacheRemoteRefs.put(hashContents, localFile.getAbsolutePath());
         } catch (Exception e) {
             e.printStackTrace();
         }
-        return checkSum + "";
+        return localFile.getAbsolutePath();
     }
 
     public static File copyFromRemotePath(String remoteDataPath) {
-        File remoteFile = new File(MapRSession.getRootDir(), remoteDataPath);
+        File remoteFile = new File(MapRSession.getRootDir(), remoteDataPath.substring(remoteDataPath.lastIndexOf("/") + 1));
         try {
             FileOutputStream outputStream = new FileOutputStream(remoteFile);
             ChunkedStorage.newReader(getInstance().chunkedStorageProvider, remoteDataPath, outputStream)
@@ -82,21 +108,48 @@ public class FileSystem {
         }
     }
 
+    public static File storeTempFile(File file)    {
+        try {
+            String id = FileUtils.checksumCRC32(file) + "";
+            File newTempFile = new File(getInstance().tempDir, id);
+            FileUtils.copyFile(file, newTempFile);
+            file.delete();
+            return newTempFile;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public static File getTempFile(String id)  {
+        File tempFile = new File(getInstance().tempDir, id);
+        try {
+            if(FileUtils.directoryContains(getInstance().tempDir, tempFile))    {
+                return tempFile;
+            }
+            else
+                return null;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
     private void connectToBackStore() {
 
         context = new AstyanaxContext.Builder()
                 .forCluster("Thrust Cluster")
                 .forKeyspace("BirdCount")
+                .withHostSupplier(HostSupplier)
                 .withAstyanaxConfiguration(new AstyanaxConfigurationImpl()
                         .setDiscoveryType(NodeDiscoveryType.RING_DESCRIBE)
+                        .setDiscoveryDelayInSeconds(60000)
+                        .setDefaultReadConsistencyLevel(ConsistencyLevel.CL_ONE)
+                        .setDefaultWriteConsistencyLevel(ConsistencyLevel.CL_ONE)
+                        .setConnectionPoolType(ConnectionPoolType.ROUND_ROBIN)
                         .setTargetCassandraVersion("2.1")
                         .setCqlVersion("3.0.0"))
-                .withConnectionPoolConfiguration(new ConnectionPoolConfigurationImpl("MapRConnectionPool")
-                        .setPort(9160)
-                        .setMaxConnsPerHost(1)
-                        .setConnectTimeout(10000)
-                        .setSeeds(MapRSession.getInstance().getCassandraHost()))
-                .withConnectionPoolMonitor(new CountingConnectionPoolMonitor())
+                .withConnectionPoolConfiguration(new ConnectionPoolConfigurationImpl("MapRConnectionPool"))
                 .buildKeyspace(ThriftFamilyFactory.getInstance());
 
         context.start();
@@ -123,6 +176,15 @@ public class FileSystem {
 
         chunkedStorageProvider = new CassandraChunkedStorageProvider(keyspace, CF_CHUNK);
     }
+
+    final Supplier<List<Host>> HostSupplier = new Supplier<List<Host>>() {
+
+        @Override
+        public List<Host> get() {
+            Host host = new Host(MapRSession.getInstance().getCassandraSeeds(), 9160);
+            return Collections.singletonList(host);
+        }
+    };
 
     private void disconnectFromBackStore() {
         context.shutdown();
